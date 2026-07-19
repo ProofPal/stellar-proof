@@ -1,7 +1,9 @@
 # 🚀 ProofPal AI — Onchain Crypto Receipts & Verification
 
-> **Theme**: BuildAnything - Spark Hackathon MVP
+> **Theme**: BuildAnything - Spark Hackathon MVP  
 > **Tagline**: *Every crypto payment deserves a receipt.*
+
+![ProofPal AI Dashboard Screenshot](public/screenshots/dashboard_mockup.png)
 
 ProofPal AI is a production-ready application designed to solve a major personal crypto problem: transaction history tracking and tax compliance. It automatically generates AI-powered, cryptographically verifiable, and IPFS-stored professional payment receipts for transactions on the Monad Testnet, allowing users to search their payments using natural language, verify them onchain, and export beautiful, tax-ready PDF invoices.
 
@@ -141,4 +143,12 @@ Here is how ProofPal AI checks all boxes to maximize **BuildAnything** scoring:
 * **RPC Timeout Errors**: If the Monad Testnet RPC is congested or down, toggle **Demo Mode** in the dashboard Settings to simulate successful transactions immediately.
 * **MetaMask Switch Issues**: RainbowKit and Wagmi handles chain checks. If you are on an unsupported chain, the app will show a clear warning banner and switch buttons in both the sidebar and transaction forms to redirect you to Monad Testnet.
 * **ESLint/TypeScript Errors during Build**: Run `npm run build` to verify typings, routing path checks, and React imports.
+
+---
+
+## 📺 Demo Video & Presentation Resources
+
+* **Live Demo Video**: [Watch the 3-minute Pitch & Demo Video (Placeholder)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+* **Presentation Script**: Read our [demo_script.md](file:///c:/Users/ICT%20LASIEC/.gemini/antigravity-ide/scratch/proofpal-ai/docs/demo_script.md) located in `docs/` folder for the step-by-step pitch slides and script.
+
 
