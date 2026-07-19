@@ -200,8 +200,8 @@ export function Landing({ onLaunchApp }: LandingProps) {
             <span className="font-semibold text-zinc-300">ProofPal AI</span>
           </div>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-white transition">GitHub</a>
-            <a href="#" className="hover:text-white transition">Docs</a>
+            <a href="https://github.com/techAlhaji/proofpal-ai" target="_blank" rel="noreferrer" className="hover:text-white transition">GitHub</a>
+            <a href="https://github.com/techAlhaji/proofpal-ai#readme" target="_blank" rel="noreferrer" className="hover:text-white transition">Docs</a>
             <a href="#" className="hover:text-white transition">Privacy</a>
             <a href="#" className="hover:text-white transition">Terms</a>
           </div>
