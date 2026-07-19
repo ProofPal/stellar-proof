@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAccount, useSendTransaction, useContractWrite, usePrepareContractWrite } from "wagmi";
+import { useAccount, useSendTransaction, useContractWrite, usePrepareContractWrite, useNetwork, useSwitchNetwork } from "wagmi";
 import { parseEther } from "viem";
 import { parseUnits } from "viem";
 import { Sparkles, ArrowRight, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -35,6 +35,9 @@ interface CreatePaymentProps {
 
 export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
   const { address: userAddress, isConnected } = useAccount();
+  const { chain } = useNetwork();
+  const { switchNetwork } = useSwitchNetwork();
+  const isWrongNetwork = isConnected && chain && chain.id !== 10143;
   
   // Form State
   const [recipient, setRecipient] = useState("");
@@ -66,8 +69,9 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
       setStatus("error");
       return;
     }
-    if (!recipient.startsWith("0x") || recipient.length !== 42) {
-      setErrorMessage("Invalid recipient wallet address.");
+    const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;
+    if (!ethAddressRegex.test(recipient)) {
+      setErrorMessage("Invalid recipient wallet address. Must be a valid 42-character Hex address starting with 0x.");
       setStatus("error");
       return;
     }
@@ -81,6 +85,15 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
       setStatus("error");
       return;
     }
+    if (!mockMode && isWrongNetwork) {
+      setErrorMessage("Please switch your network to Monad Testnet before sending a payment.");
+      setStatus("error");
+      return;
+    }
+
+    // Sanitize user inputs to prevent XSS
+    const cleanPurpose = purpose.replace(/<\/?[^>]+(>|$)/g, "").trim();
+    const cleanNotes = notes.replace(/<\/?[^>]+(>|$)/g, "").trim();
 
     setStatus("sending-payment");
     setErrorMessage("");
@@ -115,9 +128,9 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
         body: JSON.stringify({
           amount,
           tokenSymbol,
-          purpose,
+          purpose: cleanPurpose,
           category,
-          notes,
+          notes: cleanNotes,
           sender: userAddress,
           receiver: recipient,
         }),
@@ -137,9 +150,9 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
         tokenSymbol,
         timestamp: Math.floor(Date.now() / 1000),
         txHash,
-        purpose,
+        purpose: cleanPurpose,
         category: aiData.category || category,
-        notes,
+        notes: cleanNotes,
         aiTitle: aiData.aiTitle,
         aiSummary: aiData.aiSummary,
         aiExplanation: aiData.aiExplanation,
@@ -168,7 +181,7 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
         // Prepare and execute contract write
         const amountWei = parseEther(amount);
         const onchainTx = await writeAsync({
-          args: [receiptId, recipient as `0x${string}`, amountWei, tokenSymbol, ipfsHash, purpose],
+          args: [receiptId, recipient as `0x${string}`, amountWei, tokenSymbol, ipfsHash, cleanPurpose],
         });
         await new Promise((resolve) => setTimeout(resolve, 2000)); // wait for indexing
       }
@@ -183,9 +196,9 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
         ipfsHash,
         timestamp: Math.floor(Date.now() / 1000),
         txHash,
-        purpose,
+        purpose: cleanPurpose,
         category: aiData.category || category,
-        notes,
+        notes: cleanNotes,
         aiTitle: aiData.aiTitle,
         aiSummary: aiData.aiSummary,
         aiExplanation: aiData.aiExplanation,
@@ -371,13 +384,24 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
           </div>
 
           {/* Submit Button */}
-          <button
-            type="submit"
-            className="group flex items-center justify-center gap-2 w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/10 cursor-pointer transition duration-150 text-sm"
-          >
-            Generate Receipt & Onchain Proof
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </button>
+          {!mockMode && isWrongNetwork ? (
+            <button
+              type="button"
+              onClick={() => switchNetwork?.(10143)}
+              className="flex items-center justify-center gap-2 w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-lg shadow-red-500/10 cursor-pointer transition duration-150 text-sm"
+            >
+              Switch Network to Monad Testnet
+              <RefreshCw className="w-4 h-4 animate-spin" style={{ animationDuration: '3s' }} />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="group flex items-center justify-center gap-2 w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/10 cursor-pointer transition duration-150 text-sm"
+            >
+              Generate Receipt & Onchain Proof
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          )}
         </form>
       )}
     </div>

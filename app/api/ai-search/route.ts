@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
+  let receipts: any[] = [];
   try {
     const body = await request.json();
-    const { query, receipts } = body;
+    const { query } = body;
+    receipts = body.receipts;
 
     if (!query || !receipts || !Array.isArray(receipts)) {
       return NextResponse.json(

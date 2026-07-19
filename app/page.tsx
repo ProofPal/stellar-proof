@@ -9,6 +9,7 @@ import { CreatePayment } from "@/components/CreatePayment";
 import { ReceiptDetail } from "@/components/ReceiptDetail";
 import { Settings } from "@/components/Settings";
 import { getLocalReceipts, ReceiptData } from "@/lib/db";
+import { Menu } from "lucide-react";
 
 export default function Home() {
   // Prevent Next.js hydration mismatches on mount
@@ -18,6 +19,9 @@ export default function Home() {
   const [activeView, setActiveView] = useState<"landing" | "dashboard">("landing");
   const [currentTab, setCurrentTab] = useState<string>("overview");
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+  
+  // Mobile drawer state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Storage and Mode States
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
@@ -50,59 +54,83 @@ export default function Home() {
         onTabChange={(tab) => {
           setSelectedReceipt(null); // Clear active detail view on tab switch
           setCurrentTab(tab);
+          setIsMobileMenuOpen(false); // Close mobile drawer
         }}
         onBackToLanding={() => {
           setSelectedReceipt(null);
           setActiveView("landing");
+          setIsMobileMenuOpen(false);
         }}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Panel Content Area */}
-      <main className="flex-1 p-8 md:p-12 overflow-y-auto h-screen relative">
-        {selectedReceipt ? (
-          /* Receipt detail overrides current view if a receipt is selected */
-          <ReceiptDetail
-            receipt={selectedReceipt}
-            onBack={() => {
-              setSelectedReceipt(null);
-              setReceipts(getLocalReceipts()); // Refresh receipts list
-            }}
-            mockMode={mockMode}
-          />
-        ) : (
-          /* Render Active Tab Component */
-          <>
-            {currentTab === "overview" && (
-              <Overview
-                receipts={receipts}
-                onViewDetail={(r) => setSelectedReceipt(r)}
-              />
-            )}
-            {currentTab === "receipts" && (
-              <ReceiptsList
-                receipts={receipts}
-                onViewDetail={(r) => setSelectedReceipt(r)}
-              />
-            )}
-            {currentTab === "payment" && (
-              <CreatePayment
-                mockMode={mockMode}
-                onSuccess={(r) => {
-                  setReceipts(getLocalReceipts());
-                  setSelectedReceipt(r);
-                }}
-              />
-            )}
-            {currentTab === "settings" && (
-              <Settings
-                mockMode={mockMode}
-                onToggleMockMode={() => setMockMode(!mockMode)}
-                onClearReceipts={() => setReceipts([])}
-              />
-            )}
-          </>
-        )}
-      </main>
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile Top Navbar */}
+        <header className="flex md:hidden items-center justify-between px-6 py-4 border-b border-white/5 bg-[#09090b]/80 backdrop-blur sticky top-0 z-30">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center font-bold text-white text-sm">
+              P
+            </div>
+            <span className="font-semibold text-sm tracking-tight text-white">
+              ProofPal AI
+            </span>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-1.5 text-zinc-400 hover:text-white hover:bg-white/5 border border-white/5 rounded-lg transition"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+        </header>
+
+        <main className="flex-1 p-6 md:p-12 overflow-y-auto h-[calc(100vh-60px)] md:h-screen relative">
+          {selectedReceipt ? (
+            /* Receipt detail overrides current view if a receipt is selected */
+            <ReceiptDetail
+              receipt={selectedReceipt}
+              onBack={() => {
+                setSelectedReceipt(null);
+                setReceipts(getLocalReceipts()); // Refresh receipts list
+              }}
+              mockMode={mockMode}
+            />
+          ) : (
+            /* Render Active Tab Component */
+            <>
+              {currentTab === "overview" && (
+                <Overview
+                  receipts={receipts}
+                  onViewDetail={(r) => setSelectedReceipt(r)}
+                />
+              )}
+              {currentTab === "receipts" && (
+                <ReceiptsList
+                  receipts={receipts}
+                  onViewDetail={(r) => setSelectedReceipt(r)}
+                />
+              )}
+              {currentTab === "payment" && (
+                <CreatePayment
+                  mockMode={mockMode}
+                  onSuccess={(r) => {
+                    setReceipts(getLocalReceipts());
+                    setSelectedReceipt(r);
+                  }}
+                />
+              )}
+              {currentTab === "settings" && (
+                <Settings
+                  mockMode={mockMode}
+                  onToggleMockMode={() => setMockMode(!mockMode)}
+                  onClearReceipts={() => setReceipts([])}
+                />
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

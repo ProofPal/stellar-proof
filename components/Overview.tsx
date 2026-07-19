@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 import { ReceiptData } from "@/lib/db";
 import { FileText, TrendingUp, DollarSign, Wallet, ArrowUpRight } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { motion } from "framer-motion";
 
 interface OverviewProps {
   receipts: ReceiptData[];
@@ -84,7 +85,12 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
   const COLORS = ["#8A2BE2", "#a855f7", "#3b82f6", "#ec4899", "#f59e0b", "#10b981"];
 
   return (
-    <div className="flex flex-col gap-8 w-full max-w-6xl mx-auto py-2">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="flex flex-col gap-8 w-full max-w-6xl mx-auto py-2"
+    >
       {/* Header */}
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight">Overview</h1>
@@ -96,7 +102,11 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
       {/* Metrics Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {/* Total Receipts */}
-        <div className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between">
+        <motion.div
+          whileHover={{ scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between hover:border-purple-500/20 transition-all duration-300"
+        >
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Total Receipts
@@ -106,10 +116,14 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
           <div className="p-3 bg-purple-600/10 text-purple-400 rounded-xl">
             <FileText className="w-5 h-5" />
           </div>
-        </div>
+        </motion.div>
 
         {/* Total Volume */}
-        <div className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between">
+        <motion.div
+          whileHover={{ scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between hover:border-purple-500/20 transition-all duration-300"
+        >
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Total Volume
@@ -119,10 +133,14 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
           <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-xl">
             <DollarSign className="w-5 h-5" />
           </div>
-        </div>
+        </motion.div>
 
         {/* Business Share */}
-        <div className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between">
+        <motion.div
+          whileHover={{ scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between hover:border-purple-500/20 transition-all duration-300"
+        >
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Business Payments
@@ -132,10 +150,14 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
           <div className="p-3 bg-emerald-600/10 text-emerald-400 rounded-xl">
             <TrendingUp className="w-5 h-5" />
           </div>
-        </div>
+        </motion.div>
 
         {/* Average Value */}
-        <div className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between">
+        <motion.div
+          whileHover={{ scale: 1.02 }}
+          transition={{ type: "spring", stiffness: 300, damping: 15 }}
+          className="p-5 bg-zinc-900/40 border border-white/5 rounded-2xl flex items-center justify-between hover:border-purple-500/20 transition-all duration-300"
+        >
           <div className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Avg Payment
@@ -145,7 +167,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
           <div className="p-3 bg-amber-600/10 text-amber-400 rounded-xl">
             <Wallet className="w-5 h-5" />
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Charts Grid */}
@@ -305,6 +327,6 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
           </table>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

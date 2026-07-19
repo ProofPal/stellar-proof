@@ -105,136 +105,178 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
       format: "a4"
     });
 
-    // Formatting colors
-    const primaryColor = "#8A2BE2"; // Purple
-    const textColor = "#1A1A1A";
-    const mutedColor = "#666666";
+    const primaryColor = "#8A2BE2"; // Monad Purple
+    const textColor = "#1F2937"; // Dark zinc
+    const mutedColor = "#6B7280"; // Light grey
+    const successColor = "#059669"; // Emerald green
 
-    // Draw header border
-    doc.setDrawColor(138, 43, 226);
-    doc.setLineWidth(1.5);
-    doc.line(15, 15, 195, 15);
+    // 1. Top brand accent strip
+    doc.setFillColor(138, 43, 226);
+    doc.rect(0, 0, 210, 8, "F");
 
-    // Title
+    // 2. Document Title and Header branding
     doc.setTextColor(primaryColor);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text("ProofPal AI Payment Receipt", 15, 28);
+    doc.setFontSize(20);
+    doc.text("ProofPal AI Payment Receipt", 15, 24);
 
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(mutedColor);
     doc.setFont("helvetica", "normal");
-    doc.text("Onchain Cryptographic Verification Protocol", 15, 33);
+    doc.text("Onchain Cryptographic Verification Protocol", 15, 29);
+
+    // 3. Official Verification Badge Stamp (Top Right)
+    doc.setDrawColor(5, 150, 105); // successColor
+    doc.setLineWidth(0.4);
+    doc.setFillColor(240, 253, 250);
+    doc.roundedRect(145, 16, 50, 12, 2, 2, "FD");
+
+    doc.setTextColor(successColor);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text("VERIFIED ONCHAIN", 152, 21);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("MONAD TESTNET SECURE", 152, 25);
 
     // Divider line
-    doc.setDrawColor(230, 230, 230);
+    doc.setDrawColor(229, 231, 235);
     doc.setLineWidth(0.5);
-    doc.line(15, 38, 195, 38);
+    doc.line(15, 34, 195, 34);
 
-    // Transaction Overview Box
+    // 4. Receipt Overview Details
     doc.setTextColor(textColor);
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text(`Receipt ID: ${receipt.id}`, 15, 48);
+    doc.text(`Receipt ID: ${receipt.id}`, 15, 43);
     
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(`Date: ${new Date(receipt.timestamp * 1000).toLocaleString()}`, 15, 54);
-    doc.text(`Status: CONMED & VERIFIED ONCHAIN`, 15, 60);
+    doc.setFontSize(9);
+    doc.setTextColor(mutedColor);
+    doc.text(`Issued Date: ${new Date(receipt.timestamp * 1000).toLocaleString()}`, 15, 48);
+    doc.text(`Status: CONFIRMED & INDEXED ONCHAIN`, 15, 53);
 
-    // Amount Table box
-    doc.setFillColor(248, 248, 250);
-    doc.rect(15, 67, 180, 25, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Payment Amount", 20, 74);
-    doc.text("Purpose & Scope", 95, 74);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(14);
-    doc.setTextColor(primaryColor);
-    doc.text(`${receipt.amount} ${receipt.tokenSymbol}`, 20, 83);
+    // 5. Professional Invoice Table Breakdown
+    // Table Header Container
+    doc.setFillColor(249, 250, 251);
+    doc.rect(15, 60, 180, 8, "F");
     
-    doc.setFontSize(10);
-    doc.setTextColor(textColor);
-    doc.text(receipt.purpose.length > 40 ? receipt.purpose.slice(0, 40) + "..." : receipt.purpose, 95, 83);
-
-    // Sender / Receiver Details
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Transaction Parties", 15, 104);
+    doc.setFontSize(9);
+    doc.setTextColor(mutedColor);
+    doc.text("Payment Purpose / Description", 20, 65);
+    doc.text("Category", 120, 65);
+    doc.text("Amount Paid", 160, 65);
 
+    // Table Divider
+    doc.setDrawColor(243, 244, 246);
+    doc.setLineWidth(0.3);
+    doc.line(15, 68, 195, 68);
+
+    // Table Content Row
     doc.setFont("helvetica", "normal");
+    doc.setTextColor(textColor);
     doc.setFontSize(9.5);
-    doc.setTextColor(mutedColor);
-    doc.text("From Sender Address:", 15, 111);
-    doc.setTextColor(textColor);
-    doc.setFont("courier", "bold");
-    doc.text(receipt.sender, 15, 116);
-
-    doc.setTextColor(mutedColor);
-    doc.setFont("helvetica", "normal");
-    doc.text("To Recipient Address:", 15, 125);
-    doc.setTextColor(textColor);
-    doc.setFont("courier", "bold");
-    doc.text(receipt.receiver, 15, 130);
-
-    // Divider
-    doc.setDrawColor(230, 230, 230);
-    doc.line(15, 138, 195, 138);
-
-    // AI summary block
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("AI Highlight Summary", 15, 148);
+    const purposeText = receipt.purpose.length > 50 ? receipt.purpose.slice(0, 50) + "..." : receipt.purpose;
+    doc.text(purposeText, 20, 74);
+    doc.text(receipt.category || "General", 120, 74);
     
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(textColor);
-    const summaryLines = doc.splitTextToSize(receipt.aiSummary, 175);
-    doc.text(summaryLines, 15, 155);
-
-    // AI detailed explanation
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("Detailed Transaction Scope", 15, 172);
+    doc.setTextColor(primaryColor);
+    doc.text(`${receipt.amount} ${receipt.tokenSymbol}`, 160, 74);
+    
+    // Bottom Table Line
+    doc.setDrawColor(209, 213, 219);
+    doc.line(15, 78, 195, 78);
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+    // 6. Transaction Parties Section
     doc.setTextColor(textColor);
-    const explanationLines = doc.splitTextToSize(receipt.aiExplanation, 175);
-    doc.text(explanationLines, 15, 179);
-
-    // Divider
-    doc.line(15, 205, 195, 205);
-
-    // Onchain details
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("Blockchain Audit Trails", 15, 215);
+    doc.setFontSize(10.5);
+    doc.text("Transaction Parties", 15, 88);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(mutedColor);
-    doc.text("Transaction Hash:", 15, 222);
-    doc.setFont("courier", "bold");
+    doc.text("From Sender Address:", 15, 94);
     doc.setTextColor(textColor);
-    doc.text(receipt.txHash, 15, 226);
+    doc.setFont("courier", "bold");
+    doc.setFontSize(8.5);
+    doc.text(receipt.sender, 15, 98);
 
     doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
     doc.setTextColor(mutedColor);
-    doc.text("IPFS Permanent Storage Gateway (CID Metadata):", 15, 235);
-    doc.setFont("courier", "bold");
+    doc.text("To Recipient Address:", 15, 106);
     doc.setTextColor(textColor);
-    doc.text(receipt.ipfsHash, 15, 239);
+    doc.setFont("courier", "bold");
+    doc.setFontSize(8.5);
+    doc.text(receipt.receiver, 15, 110);
 
-    // Footer branding
+    // Divider
+    doc.setDrawColor(229, 231, 235);
+    doc.line(15, 116, 195, 116);
+
+    // 7. AI Summary Quote (With left border styling)
+    doc.setTextColor(textColor);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text("AI Highlight Summary", 15, 125);
+    
+    // Draw quote left vertical accent line
+    doc.setDrawColor(138, 43, 226); // primary purple
+    doc.setLineWidth(0.8);
+    doc.line(16, 131, 16, 142);
+
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9);
+    doc.setTextColor(textColor);
+    const summaryLines = doc.splitTextToSize(`"${receipt.aiSummary}"`, 172);
+    doc.text(summaryLines, 20, 135);
+
+    // 8. AI Detailed Scope Explanations
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text("Detailed Transaction Scope", 15, 151);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    const explanationLines = doc.splitTextToSize(receipt.aiExplanation, 178);
+    doc.text(explanationLines, 15, 157);
+
+    // Divider
+    doc.setDrawColor(229, 231, 235);
+    doc.line(15, 185, 195, 185);
+
+    // 9. Onchain Verification Ledger Trails
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Blockchain Audit Trails", 15, 194);
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(mutedColor);
-    doc.text("Generated securely via ProofPal AI on the Monad Blockchain.", 15, 260);
+    doc.text("Transaction Signature (Tx Hash):", 15, 200);
+    doc.setFont("courier", "bold");
+    doc.setTextColor(textColor);
+    doc.setFontSize(8);
+    doc.text(receipt.txHash, 15, 204);
 
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(mutedColor);
+    doc.text("Decentralized Metadata Payload (IPFS CID Hash):", 15, 212);
+    doc.setFont("courier", "bold");
+    doc.setTextColor(textColor);
+    doc.setFontSize(8);
+    doc.text(receipt.ipfsHash, 15, 216);
+
+    // 10. Footer info
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(mutedColor);
+    doc.text("This receipt is cryptographically verifiable on the Monad network. Scan QR code on the dashboard to verify.", 15, 270);
+    
     // Save PDF
     doc.save(`ProofPal-Receipt-${receipt.id}.pdf`);
   };

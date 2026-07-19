@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { ReceiptData } from "@/lib/db";
 import { Search, Sparkles, Filter, ArrowUpDown, XCircle, RefreshCw } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface ReceiptsListProps {
   receipts: ReceiptData[];
@@ -225,58 +226,96 @@ export function ReceiptsList({ receipts, onViewDetail }: ReceiptsListProps) {
       </div>
 
       {/* Grid of Receipts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredReceipts.map((r) => (
-          <div
-            key={r.id}
-            onClick={() => onViewDetail(r)}
-            className="p-5 rounded-2xl glass-card flex flex-col gap-4 justify-between h-48 cursor-pointer relative overflow-hidden"
-          >
-            {/* Top Row: Title & Amount */}
-            <div className="flex flex-col gap-1.5">
-              <div className="flex justify-between items-start gap-4">
-                <h3 className="font-bold text-base text-white truncate max-w-[70%]">
-                  {r.aiTitle}
-                </h3>
-                <span className="font-bold text-purple-400 shrink-0 text-sm">
-                  {r.amount} {r.tokenSymbol}
+      {isAiSearching ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-pulse">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="p-5 rounded-2xl border border-white/5 bg-zinc-900/20 flex flex-col gap-4 justify-between h-48 relative overflow-hidden"
+            >
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="h-5 bg-zinc-800 rounded w-1/2" />
+                  <div className="h-5 bg-zinc-800 rounded w-1/4" />
+                </div>
+                <div className="h-3 bg-zinc-800 rounded w-3/4 mt-1" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="h-3 bg-zinc-800 rounded w-full" />
+                <div className="h-3 bg-zinc-800 rounded w-5/6" />
+              </div>
+              <div className="flex justify-between items-center pt-3 border-t border-white/5 mt-1">
+                <div className="flex gap-1.5 w-1/2">
+                  <div className="h-4 bg-zinc-800 rounded-full w-10" />
+                  <div className="h-4 bg-zinc-800 rounded-full w-12" />
+                </div>
+                <div className="h-3 bg-zinc-800 rounded w-12" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
+          {filteredReceipts.map((r, i) => (
+            <motion.div
+              key={r.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.03, duration: 0.3 }}
+              onClick={() => onViewDetail(r)}
+              className="p-5 rounded-2xl glass-card flex flex-col gap-4 justify-between h-48 cursor-pointer relative overflow-hidden"
+            >
+              {/* Top Row: Title & Amount */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-start gap-4">
+                  <h3 className="font-bold text-base text-white truncate max-w-[70%]">
+                    {r.aiTitle}
+                  </h3>
+                  <span className="font-bold text-purple-400 shrink-0 text-sm">
+                    {r.amount} {r.tokenSymbol}
+                  </span>
+                </div>
+                <p className="text-zinc-500 text-xs truncate max-w-full">
+                  {r.purpose}
+                </p>
+              </div>
+
+              {/* Middle Row: AI Summary Extract */}
+              <p className="text-zinc-400 text-xs line-clamp-2 leading-relaxed">
+                {r.aiSummary}
+              </p>
+
+              {/* Bottom Row: Tags & Date */}
+              <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
+                <div className="flex gap-1.5 overflow-hidden max-w-[70%]">
+                  {r.aiTags?.slice(0, 2).map((tag, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2 py-0.5 text-[9px] font-bold bg-purple-950/20 text-purple-400 border border-purple-500/10 rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <span className="text-[10px] text-zinc-500 shrink-0">
+                  {new Date(r.timestamp * 1000).toLocaleDateString()}
                 </span>
               </div>
-              <p className="text-zinc-500 text-xs truncate max-w-full">
-                {r.purpose}
-              </p>
+            </motion.div>
+          ))}
+
+          {filteredReceipts.length === 0 && (
+            <div className="col-span-full py-16 text-center text-zinc-500 text-sm bg-zinc-900/10 border border-dashed border-white/5 rounded-2xl">
+              No receipts matched your active search or filters.
             </div>
-
-            {/* Middle Row: AI Summary Extract */}
-            <p className="text-zinc-400 text-xs line-clamp-2 leading-relaxed">
-              {r.aiSummary}
-            </p>
-
-            {/* Bottom Row: Tags & Date */}
-            <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
-              <div className="flex gap-1.5 overflow-hidden max-w-[70%]">
-                {r.aiTags?.slice(0, 2).map((tag, idx) => (
-                  <span
-                    key={idx}
-                    className="px-2 py-0.5 text-[9px] font-bold bg-purple-950/20 text-purple-400 border border-purple-500/10 rounded-full"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-              <span className="text-[10px] text-zinc-500 shrink-0">
-                {new Date(r.timestamp * 1000).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-        ))}
-
-        {filteredReceipts.length === 0 && (
-          <div className="col-span-full py-16 text-center text-zinc-500 text-sm bg-zinc-900/10 border border-dashed border-white/5 rounded-2xl">
-            No receipts matched your active search or filters.
-          </div>
-        )}
-      </div>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }
