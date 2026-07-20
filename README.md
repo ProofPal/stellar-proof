@@ -146,9 +146,3 @@ Here is how ProofPal AI checks all boxes to maximize **BuildAnything** scoring:
 
 ---
 
-## 📺 Demo Video & Presentation Resources
-
-* **Live Demo Video**: [Watch the 3-minute Pitch & Demo Video (Placeholder)](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
-* **Presentation Script**: Read our [demo_script.md](file:///c:/Users/ICT%20LASIEC/.gemini/antigravity-ide/scratch/proofpal-ai/docs/demo_script.md) located in `docs/` folder for the step-by-step pitch slides and script.
-
-
