@@ -2,40 +2,23 @@
 
 import React, { useState } from "react";
 import { ReceiptData } from "@/lib/db";
-import { ArrowLeft, Download, ShieldCheck, Copy, Check, ExternalLink, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  ShieldCheck,
+  Copy,
+  Check,
+  ExternalLink,
+  Sparkles,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useContractRead } from "wagmi";
 import { jsPDF } from "jspdf";
-
-// Minimal ABI containing only verifyReceipt for checking
-const CONTRACT_ABI = [
-  {
-    inputs: [{ internalType: "string", name: "_receiptId", type: "string" }],
-    name: "verifyReceipt",
-    outputs: [
-      { internalType: "bool", name: "", type: "bool" },
-      {
-        components: [
-          { internalType: "string", name: "receiptId", type: "string" },
-          { internalType: "address", name: "sender", type: "address" },
-          { internalType: "address", name: "receiver", type: "address" },
-          { internalType: "uint256", name: "amount", type: "uint256" },
-          { internalType: "string", name: "tokenSymbol", type: "string" },
-          { internalType: "string", name: "ipfsHash", type: "string" },
-          { internalType: "uint256", name: "timestamp", type: "uint256" },
-          { internalType: "string", name: "purpose", type: "string" }
-        ],
-        internalType: "struct ProofPalReceipts.Receipt",
-        name: "",
-        type: "tuple"
-      }
-    ],
-    stateMutability: "view",
-    type: "function"
-  }
-];
-
-const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+import {
+  STELLAR_NETWORK,
+  explorerAccountUrl,
+  explorerTxUrl,
+  fetchReceiptFromApi,
+} from "@/lib/stellar";
 
 interface ReceiptDetailProps {
   receipt: ReceiptData;
@@ -43,19 +26,16 @@ interface ReceiptDetailProps {
   mockMode: boolean;
 }
 
-export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps) {
+export function ReceiptDetail({
+  receipt,
+  onBack,
+  mockMode,
+}: ReceiptDetailProps) {
   const [copiedHash, setCopiedHash] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState<"unchecked" | "loading" | "verified" | "not-found">("unchecked");
-
-  // Wagmi contract read hook
-  const { refetch: readContract } = useContractRead({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: "verifyReceipt",
-    args: [receipt.id],
-    enabled: false,
-  });
+  const [verificationStatus, setVerificationStatus] = useState<
+    "unchecked" | "loading" | "verified" | "not-found"
+  >("unchecked");
 
   const handleCopyHash = () => {
     navigator.clipboard.writeText(receipt.txHash);
@@ -70,30 +50,27 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // Perform Cryptographic Onchain Verification
+  // Perform cryptographic verification against Soroban contract storage
   const handleVerify = async () => {
     setVerificationStatus("loading");
-    
+
     if (mockMode) {
-      // Simulation delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Simulation delay for demo mode
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       setVerificationStatus("verified");
       return;
     }
 
-    try {
-      const { data } = await readContract();
-      const result = data as [boolean, any];
-      
-      if (result && result[0] === true) {
-        setVerificationStatus("verified");
-      } else {
-        setVerificationStatus("not-found");
-      }
-    } catch (err) {
-      console.error("Verification error:", err);
-      // Fallback if local contract node is not currently active but tx details match
+    const onchain = await fetchReceiptFromApi(receipt.id);
+
+    if (
+      onchain &&
+      onchain.sender === receipt.sender &&
+      onchain.ipfsHash === receipt.ipfsHash
+    ) {
       setVerificationStatus("verified");
+    } else {
+      setVerificationStatus("not-found");
     }
   };
 
@@ -102,13 +79,13 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
-      format: "a4"
+      format: "a4",
     });
 
-    const primaryColor = "#8A2BE2"; // Monad Purple
-    const textColor = "#1F2937"; // Dark zinc
-    const mutedColor = "#6B7280"; // Light grey
-    const successColor = "#059669"; // Emerald green
+    const primaryColor = "#8A2BE2";
+    const textColor = "#1F2937";
+    const mutedColor = "#6B7280";
+    const successColor = "#059669";
 
     // 1. Top brand accent strip
     doc.setFillColor(138, 43, 226);
@@ -118,15 +95,15 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.setTextColor(primaryColor);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
-    doc.text("ProofPal AI Payment Receipt", 15, 24);
+    doc.text("StellarProof Payment Receipt", 15, 24);
 
     doc.setFontSize(9);
     doc.setTextColor(mutedColor);
     doc.setFont("helvetica", "normal");
-    doc.text("Onchain Cryptographic Verification Protocol", 15, 29);
+    doc.text("Soroban Cryptographic Verification Protocol", 15, 29);
 
     // 3. Official Verification Badge Stamp (Top Right)
-    doc.setDrawColor(5, 150, 105); // successColor
+    doc.setDrawColor(5, 150, 105);
     doc.setLineWidth(0.4);
     doc.setFillColor(240, 253, 250);
     doc.roundedRect(145, 16, 50, 12, 2, 2, "FD");
@@ -137,7 +114,7 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.text("VERIFIED ONCHAIN", 152, 21);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text("MONAD TESTNET SECURE", 152, 25);
+    doc.text("STELLAR TESTNET SECURE", 152, 25);
 
     // Divider line
     doc.setDrawColor(229, 231, 235);
@@ -149,18 +126,21 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.text(`Receipt ID: ${receipt.id}`, 15, 43);
-    
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(mutedColor);
-    doc.text(`Issued Date: ${new Date(receipt.timestamp * 1000).toLocaleString()}`, 15, 48);
+    doc.text(
+      `Issued Date: ${new Date(receipt.timestamp * 1000).toLocaleString()}`,
+      15,
+      48
+    );
     doc.text(`Status: CONFIRMED & INDEXED ONCHAIN`, 15, 53);
 
     // 5. Professional Invoice Table Breakdown
-    // Table Header Container
     doc.setFillColor(249, 250, 251);
     doc.rect(15, 60, 180, 8, "F");
-    
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(mutedColor);
@@ -168,24 +148,24 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.text("Category", 120, 65);
     doc.text("Amount Paid", 160, 65);
 
-    // Table Divider
     doc.setDrawColor(243, 244, 246);
     doc.setLineWidth(0.3);
     doc.line(15, 68, 195, 68);
 
-    // Table Content Row
     doc.setFont("helvetica", "normal");
     doc.setTextColor(textColor);
     doc.setFontSize(9.5);
-    const purposeText = receipt.purpose.length > 50 ? receipt.purpose.slice(0, 50) + "..." : receipt.purpose;
+    const purposeText =
+      receipt.purpose.length > 50
+        ? receipt.purpose.slice(0, 50) + "..."
+        : receipt.purpose;
     doc.text(purposeText, 20, 74);
     doc.text(receipt.category || "General", 120, 74);
-    
+
     doc.setFont("helvetica", "bold");
     doc.setTextColor(primaryColor);
     doc.text(`${receipt.amount} ${receipt.tokenSymbol}`, 160, 74);
-    
-    // Bottom Table Line
+
     doc.setDrawColor(209, 213, 219);
     doc.line(15, 78, 195, 78);
 
@@ -213,18 +193,16 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.setFontSize(8.5);
     doc.text(receipt.receiver, 15, 110);
 
-    // Divider
     doc.setDrawColor(229, 231, 235);
     doc.line(15, 116, 195, 116);
 
-    // 7. AI Summary Quote (With left border styling)
+    // 7. AI Summary Quote
     doc.setTextColor(textColor);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
     doc.text("AI Highlight Summary", 15, 125);
-    
-    // Draw quote left vertical accent line
-    doc.setDrawColor(138, 43, 226); // primary purple
+
+    doc.setDrawColor(138, 43, 226);
     doc.setLineWidth(0.8);
     doc.line(16, 131, 16, 142);
 
@@ -244,19 +222,18 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     const explanationLines = doc.splitTextToSize(receipt.aiExplanation, 178);
     doc.text(explanationLines, 15, 157);
 
-    // Divider
     doc.setDrawColor(229, 231, 235);
     doc.line(15, 185, 195, 185);
 
-    // 9. Onchain Verification Ledger Trails
+    // 9. Stellar verification trails
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("Blockchain Audit Trails", 15, 194);
+    doc.text("Stellar Audit Trails", 15, 194);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(mutedColor);
-    doc.text("Transaction Signature (Tx Hash):", 15, 200);
+    doc.text("Stellar Transaction Hash:", 15, 200);
     doc.setFont("courier", "bold");
     doc.setTextColor(textColor);
     doc.setFontSize(8);
@@ -265,7 +242,7 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(mutedColor);
-    doc.text("Decentralized Metadata Payload (IPFS CID Hash):", 15, 212);
+    doc.text("Decentralized Metadata Payload (IPFS CID):", 15, 212);
     doc.setFont("courier", "bold");
     doc.setTextColor(textColor);
     doc.setFontSize(8);
@@ -275,20 +252,26 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(mutedColor);
-    doc.text("This receipt is cryptographically verifiable on the Monad network. Scan QR code on the dashboard to verify.", 15, 270);
-    
-    // Save PDF
-    doc.save(`ProofPal-Receipt-${receipt.id}.pdf`);
+    doc.text(
+      "This receipt is cryptographically verifiable on Stellar Testnet via the StellarProof Soroban contract.",
+      15,
+      270
+    );
+
+    doc.save(`StellarProof-Receipt-${receipt.id}.pdf`);
   };
 
-  const verificationLink = `${window.location.origin}/verify/${receipt.id}`;
+  const verificationLink =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/verify/${receipt.id}`
+      : "";
 
   return (
     <div className="w-full max-w-2xl mx-auto py-2 flex flex-col gap-6">
       {/* Back button */}
       <button
         onClick={onBack}
-        className="flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-white transition w-fit cursor-pointer animate-pulse"
+        className="flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-white transition w-fit cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         Back to Dashboard
@@ -301,9 +284,11 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded bg-purple-600 flex items-center justify-center font-bold text-white text-[10px]">
-                P
+                S
               </div>
-              <span className="font-bold text-sm text-zinc-800 tracking-tight">ProofPal AI</span>
+              <span className="font-bold text-sm text-zinc-800 tracking-tight">
+                StellarProof
+              </span>
             </div>
             <span className="px-2.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-full border border-purple-200">
               Confirmed
@@ -315,7 +300,9 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
               <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
                 Receipt Number
               </span>
-              <span className="font-mono font-bold text-zinc-800 text-sm">#{receipt.id}</span>
+              <span className="font-mono font-bold text-zinc-800 text-sm">
+                #{receipt.id}
+              </span>
             </div>
             <span className="text-2xl font-black text-zinc-900">
               {receipt.amount} {receipt.tokenSymbol}
@@ -328,7 +315,7 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
           {/* AI Generated Highlight Section */}
           <div className="p-4 bg-purple-500/[0.03] border border-purple-500/10 rounded-2xl flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-xs text-purple-700 font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-spin" style={{ animationDuration: '3s' }} />
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
               AI Summary Highlight
             </div>
             <p className="text-xs text-zinc-700 leading-relaxed italic">
@@ -339,36 +326,62 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
           {/* Transaction Metadata Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs border-b border-zinc-100 pb-5">
             <div>
-              <span className="text-zinc-400 font-semibold block mb-0.5">Sender Address</span>
-              <span className="font-mono font-semibold text-zinc-700 break-all select-all">
+              <span className="text-zinc-400 font-semibold block mb-0.5">
+                Sender Address
+              </span>
+              <a
+                href={explorerAccountUrl(receipt.sender)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono font-semibold text-zinc-700 break-all select-all hover:text-purple-600 transition"
+              >
                 {receipt.sender}
-              </span>
+              </a>
             </div>
             <div>
-              <span className="text-zinc-400 block mb-0.5 font-semibold">Recipient Address</span>
-              <span className="font-mono font-semibold text-zinc-700 break-all select-all">
+              <span className="text-zinc-400 block mb-0.5 font-semibold">
+                Recipient Address
+              </span>
+              <a
+                href={explorerAccountUrl(receipt.receiver)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono font-semibold text-zinc-700 break-all select-all hover:text-purple-600 transition"
+              >
                 {receipt.receiver}
-              </span>
+              </a>
             </div>
             <div>
-              <span className="text-zinc-400 block mb-0.5 font-semibold">Purpose</span>
+              <span className="text-zinc-400 block mb-0.5 font-semibold">
+                Purpose
+              </span>
               <span className="text-zinc-700 font-medium">{receipt.purpose}</span>
             </div>
             <div>
-              <span className="text-zinc-400 block mb-0.5 font-semibold">Timestamp</span>
+              <span className="text-zinc-400 block mb-0.5 font-semibold">
+                Timestamp
+              </span>
               <span className="text-zinc-700 font-medium">
                 {new Date(receipt.timestamp * 1000).toLocaleString()}
               </span>
             </div>
             {receipt.notes && (
               <div className="col-span-1 sm:col-span-2">
-                <span className="text-zinc-400 block mb-0.5 font-semibold">Additional Notes</span>
-                <span className="text-zinc-700 font-medium leading-relaxed">{receipt.notes}</span>
+                <span className="text-zinc-400 block mb-0.5 font-semibold">
+                  Additional Notes
+                </span>
+                <span className="text-zinc-700 font-medium leading-relaxed">
+                  {receipt.notes}
+                </span>
               </div>
             )}
             <div className="col-span-1 sm:col-span-2">
-              <span className="text-zinc-400 block mb-0.5 font-semibold">AI Explanatory Context</span>
-              <span className="text-zinc-600 font-medium leading-relaxed">{receipt.aiExplanation}</span>
+              <span className="text-zinc-400 block mb-0.5 font-semibold">
+                AI Explanatory Context
+              </span>
+              <span className="text-zinc-600 font-medium leading-relaxed">
+                {receipt.aiExplanation}
+              </span>
             </div>
           </div>
 
@@ -390,30 +403,49 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
           {/* Audit Trail Details */}
           <div className="flex flex-col gap-3 pt-5 border-t border-zinc-100">
             <h4 className="text-xs font-bold text-zinc-800 uppercase tracking-wide">
-              Blockchain Audit Trail
+              Stellar Audit Trail
             </h4>
-            
+
             <div className="flex flex-col gap-2">
               {/* Tx Hash */}
               <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
-                <div className="flex flex-col gap-0.5 max-w-[85%]">
-                  <span className="text-zinc-400 font-bold uppercase">Tx Hash</span>
+                <div className="flex flex-col gap-0.5 max-w-[80%]">
+                  <span className="text-zinc-400 font-bold uppercase">
+                    Stellar Tx Hash
+                  </span>
                   <span className="font-mono text-zinc-700 break-all select-all font-semibold">
                     {receipt.txHash}
                   </span>
                 </div>
-                <button
-                  onClick={handleCopyHash}
-                  className="p-1.5 hover:bg-zinc-200 text-zinc-500 rounded-lg transition"
-                >
-                  {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a
+                    href={explorerTxUrl(receipt.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 hover:bg-zinc-200 text-zinc-500 rounded-lg transition"
+                    title="View on Stellar Expert"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    onClick={handleCopyHash}
+                    className="p-1.5 hover:bg-zinc-200 text-zinc-500 rounded-lg transition"
+                  >
+                    {copiedHash ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* IPFS CID */}
               <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
                 <div className="flex flex-col gap-0.5 max-w-[85%]">
-                  <span className="text-zinc-400 font-bold uppercase">IPFS CID</span>
+                  <span className="text-zinc-400 font-bold uppercase">
+                    IPFS CID
+                  </span>
                   <span className="font-mono text-zinc-700 font-semibold break-all">
                     {receipt.ipfsHash}
                   </span>
@@ -435,7 +467,8 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
             <div className="flex flex-col gap-1.5 text-center sm:text-left">
               <h4 className="text-xs font-bold text-zinc-800">Scan to Verify</h4>
               <p className="text-[10px] text-zinc-400 max-w-xs leading-normal">
-                This QR code links directly to ProofPal AI cryptographic verification engine to confirm legitimacy of the document metadata.
+                This QR code links to the public StellarProof verification page,
+                which reads the receipt directly from Soroban contract storage.
               </p>
             </div>
             <div className="p-2 bg-white border border-zinc-200 rounded-xl shrink-0">
@@ -450,19 +483,30 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
 
       {/* Verification Box */}
       {verificationStatus !== "unchecked" && (
-        <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
-          verificationStatus === "loading" ? "bg-zinc-900/40 border-white/5 text-zinc-400" :
-          verificationStatus === "verified" ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-400" :
-          "bg-red-950/20 border-red-500/20 text-red-400"
-        }`}>
+        <div
+          className={`p-4 rounded-2xl flex items-center gap-3 border ${
+            verificationStatus === "loading"
+              ? "bg-zinc-900/40 border-white/5 text-zinc-400"
+              : verificationStatus === "verified"
+              ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-400"
+              : "bg-red-950/20 border-red-500/20 text-red-400"
+          }`}
+        >
           {verificationStatus === "loading" && (
             <div className="w-5 h-5 rounded-full border-2 border-zinc-500/10 border-t-zinc-400 animate-spin" />
           )}
-          {verificationStatus === "verified" && <ShieldCheck className="w-5 h-5 shrink-0" />}
+          {verificationStatus === "verified" && (
+            <ShieldCheck className="w-5 h-5 shrink-0" />
+          )}
           <span className="text-xs font-semibold">
-            {verificationStatus === "loading" && "Running onchain verification engine..."}
-            {verificationStatus === "verified" && "Verified Cryptographically: Receipt ID match found onchain on Monad Testnet."}
-            {verificationStatus === "not-found" && "Onchain Verification Failed: No receipt found for this ID."}
+            {verificationStatus === "loading" &&
+              "Querying Soroban contract storage..."}
+            {verificationStatus === "verified" &&
+              (mockMode
+                ? "Demo verification passed: this simulated receipt matches its local record."
+                : `Verified cryptographically: receipt found on ${STELLAR_NETWORK.name} and its IPFS CID matches.`)}
+            {verificationStatus === "not-found" &&
+              "Onchain verification failed: no matching receipt was found in the StellarProof contract."}
           </span>
         </div>
       )}
@@ -487,7 +531,11 @@ export function ReceiptDetail({ receipt, onBack, mockMode }: ReceiptDetailProps)
           onClick={handleCopyLink}
           className="px-4 py-3 bg-zinc-900/40 hover:bg-zinc-900/60 border border-white/5 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer transition"
         >
-          {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+          {copiedLink ? (
+            <Check className="w-4 h-4 text-emerald-400" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
           Copy Share Link
         </button>
       </div>

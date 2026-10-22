@@ -1,4 +1,4 @@
-# 🎙️ ProofPal AI: 3-Minute Demo Video Script
+# 🎙️ StellarProof: 3-Minute Demo Video Script
 
 This script outlines the flow, visual transitions, and key talking points for the project's video demonstration.
 
@@ -6,52 +6,54 @@ This script outlines the flow, visual transitions, and key talking points for th
 
 ## ⏱️ 0:00 - 0:45: The Problem & The Hook
 
-* **Visual**: Show the **ProofPal AI** landing page, scrolling through the hero section with floating orbs and modern dark-mode aesthetics.
+* **Visual**: Show the **StellarProof** landing page, scrolling through the hero section with floating orbs and modern dark-mode aesthetics.
 * **Speaker**:
-  > "Hi everyone, I'm the founder of ProofPal AI. Let's talk about a problem we all face. 
-  > 
-  > Every time we use traditional mobile banking, we get a beautiful receipt instantly. But when we send crypto onchain, we get a raw transaction hash on a confusing explorer. We forget who it was for, why we sent it, and we lose our business record trail. 
-  > 
-  > Crypto usually doesn't generate professional receipts. That's why we built **ProofPal AI**—bringing Stripe-style receipt generation and natural language searching to Web3, powered by the Monad blockchain."
+  > "Hi everyone, I'm the founder of StellarProof. Let's talk about a problem every builder on Stellar knows.
+  >
+  > When you get paid in XLM, all you receive is a transaction hash on an explorer. You forget who it was for, why it was sent, and you lose your business record trail.
+  >
+  > Stellar payments settle in seconds, but they don't generate invoices. That's why we built **StellarProof** — Stripe-style receipts, AI summaries and natural language search, entirely on Stellar and Soroban."
 
 ---
 
 ## ⏱️ 0:45 - 1:30: Connecting & Making a Payment
 
-* **Visual**: Click "Launch App". Show the dashboard overview, then navigate to "Create Payment". Enter a recipient address, set amount to `2.5 MON`, set purpose to `Smart Contract Security Audit`, and category to `Security`. Click "Generate Receipt". Show MetaMask popup and sign.
+* **Visual**: Click "Launch App". Show the dashboard overview, then navigate to "Create Payment". Click "Connect Wallet", choose Freighter, then enter a recipient address, set amount to `2.5 XLM`, purpose `Soroban Contract Security Audit`, category `Security`. Click "Pay & Anchor Receipt on Stellar" and approve the wallet prompt.
 * **Speaker**:
-  > "Our dashboard connects seamlessly to MetaMask or Rabby on the Monad Testnet. Let's make a real onchain payment. 
-  > 
-  > I'm sending 2.5 MON to our auditor for a contract security review. As soon as I sign this transaction, ProofPal AI springs into action. It doesn't just confirm the payment—it analyzes the context in the background."
+  > "StellarProof connects to any Stellar wallet through the Stellar Wallets Kit — Freighter here, but xBull, Albedo, Lobstr and hardware wallets work too.
+  >
+  > I'm paying 2.5 XLM to our auditor for a Soroban contract review. One signature covers everything: the payment itself and the receipt that gets anchored onchain."
 
 ---
 
-## ⏱️ 1:30 - 2:15: AI Processing, IPFS, & Onchain Logs
+## ⏱️ 1:30 - 2:15: AI Processing, IPFS, & Soroban Anchoring
 
-* **Visual**: Show the step-by-step confirmation loader: Blockchain Confirmation ➔ AI Summary Generation ➔ IPFS Pinned ➔ Committed Onchain. Then, instantly load the final white Stripe-style receipt page with the QR code.
+* **Visual**: Show the step-by-step loader: AI Summary ➔ IPFS Pinned ➔ Settling on Stellar. Then the final white Stripe-style receipt with the QR code and a verified badge.
 * **Speaker**:
-  > "In the background, Gemini AI analyzes our transaction details, generating a professional title, a 2-sentence summary, tags, and a friendly explanation.
-  > 
-  > This metadata payload is immediately pinned to IPFS via Pinata. We then write the unique receipt ID and the IPFS CID directly onchain to our Monad smart contract. 
-  > 
-  > Here is the final result: a gorgeous, clean receipt displaying audit logs, sender and receiver keys, an interactive verification QR code, and a download button."
+  > "Behind the scenes, Gemini AI writes a professional title, a two-sentence summary, tags and a customer-friendly explanation.
+  >
+  > That payload is pinned to IPFS. Then one signed Soroban invocation does both jobs atomically: our Rust contract moves the XLM through Stellar's native asset contract and stores the receipt id, both addresses, the amount and the IPFS CID.
+  >
+  > Here is the result: a clean receipt with the Stellar audit trail, an explorer link, a verification QR code and a PDF download."
 
 ---
 
-## ⏱️ 2:15 - 2:45: Natural Language Search & PDF Export
+## ⏱️ 2:15 - 2:45: Public Verification & Natural Language Search
 
-* **Visual**: Click "Download PDF" (show the generated vector PDF). Go to "Receipt History" page. Type into the AI search box: *"Show security audit receipts for July"* and click "Ask AI". Show the list filter down to only the receipt we just created.
+* **Visual**: Click "Verify Receipt" (show the green onchain confirmation), then "Copy Share Link" and open `/verify/[id]` in a new tab. Show the "Verified" badge. Back in the dashboard, type *"Show security audit receipts above 1 XLM"* into the AI search and click "Ask AI".
 * **Speaker**:
-  > "Need a physical copy? One click generates and downloads a clean, print-ready PDF containing vector text and verification links.
-  > 
-  > But what about search? Finding past crypto txs is normally a nightmare. With ProofPal AI, we can type naturally. I'll search: 'Show security audit receipts for July'. Gemini translates our query and returns the matching entries from our database instantly."
+  > "Anyone can verify a receipt without trusting our servers. The public page derives the receipt's storage key and reads it straight out of Soroban contract storage with `getLedgerEntries` — no indexer, no wallet, no backend.
+  >
+  > And finding old payments is just as easy. I search naturally and Gemini returns the matching receipts instantly."
 
 ---
 
 ## ⏱️ 2:45 - 3:00: Closing Pitch
 
-* **Visual**: Zoom in on the "Verified Cryptographically on Monad" badge, then show the landing page footer.
+* **Visual**: Zoom in on the "Verified" badge, then show Stellar Expert with the contract and the transaction, ending on the landing page footer.
 * **Speaker**:
-  > "ProofPal AI merges blockchain immutability with modern AI-driven financial tracking. It is fast, decentralized, and ready to make crypto bookkeeping professional. 
-  > 
-  > Thank you, and let's make onchain payments clear!"
+  > "StellarProof combines Stellar's fast, cheap settlement with Soroban's verifiable state and modern AI bookkeeping.
+  >
+  > It's open source, it runs on testnet today, and it makes every Stellar payment a proper business record.
+  >
+  > Thank you — let's make onchain payments clear."

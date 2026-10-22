@@ -18,7 +18,7 @@ export interface ReceiptData {
   aiTags: string[];
 }
 
-const LOCAL_STORAGE_KEY = "proofpal_receipts";
+const LOCAL_STORAGE_KEY = "stellarproof_receipts";
 
 /**
  * Gets all receipts from localStorage (offline storage).
@@ -26,7 +26,7 @@ const LOCAL_STORAGE_KEY = "proofpal_receipts";
 export function getLocalReceipts(): ReceiptData[] {
   if (typeof window === "undefined") return [];
   const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (!stored) return getMockReceipts(); // Return mock seed data if empty, ensuring dashboard is populated on first load
+  if (!stored) return getMockReceipts(); // Seed the dashboard on first load
   try {
     return JSON.parse(stored);
   } catch (e) {
@@ -42,14 +42,14 @@ export async function saveReceipt(receipt: ReceiptData): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
   // 1. Save to localStorage
-  const local = getLocalReceipts().filter(r => r.id !== receipt.id);
+  const local = getLocalReceipts().filter((r) => r.id !== receipt.id);
   local.unshift(receipt); // Add to beginning of list
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(local));
 
   // 2. Sync to Supabase in background
   try {
-    const isSupabaseConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
+    const isSupabaseConfigured =
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://your-project.supabase.co";
 
     if (isSupabaseConfigured) {
@@ -96,60 +96,68 @@ export function clearLocalCache() {
 }
 
 /**
- * Mock data to populate dashboard on first launch so the hackathon reviewer is wowed.
+ * Sample Stellar Testnet receipts so the dashboard is populated on first launch.
  */
 function getMockReceipts(): ReceiptData[] {
   return [
     {
       id: "rcpt-55a29f8a",
-      sender: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      receiver: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199",
+      sender: "GAXJ2ZSRTYP5233UYEBUOSDLYBJ65Q3XH2Z5UMAJ46SA26NEXATJ3SLV",
+      receiver: "GAXSFFU2UVEO2V2EXXPMCQGG5U3TPAYP36IBYNBM37Y3UPT2VCEQC427",
       amount: "15.5",
-      tokenSymbol: "MON",
+      tokenSymbol: "XLM",
       ipfsHash: "QmYwAPzwh35SBaoafuiQQgNmoNd6STvtc6OcCcx5nBR51",
       timestamp: Math.floor(Date.now() / 1000) - 86400 * 2, // 2 days ago
-      txHash: "0x8f2d5a3f12ab56ef8f2c3d5a1098ef7ca5b678de0987f65eaef43a21bc98ef76",
-      purpose: "Smart Contract Audit Service",
+      txHash:
+        "8f2d5a3f12ab56ef8f2c3d5a1098ef7ca5b678de0987f65eaef43a21bc98ef76",
+      purpose: "Soroban Contract Audit Service",
       category: "Security",
-      notes: "Audit report completed for v1.0 contracts.",
-      aiTitle: "Smart Contract Audit",
-      aiSummary: "Payment of 15.5 MON for solidity contract security audit services.",
-      aiExplanation: "This payment covers the review of core protocol contracts. Security review completed with zero critical bugs outstanding.",
-      aiTags: ["Security", "Audit", "Solidity", "Business"]
+      notes: "Audit report completed for the receipts contract.",
+      aiTitle: "Soroban Contract Audit",
+      aiSummary:
+        "Payment of 15.5 XLM for a Soroban smart contract security audit.",
+      aiExplanation:
+        "This payment covers the review of the StellarProof Rust contracts. Security review completed with zero critical findings outstanding.",
+      aiTags: ["Security", "Audit", "Soroban", "Business"],
     },
     {
       id: "rcpt-c19b8823",
-      sender: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-      receiver: "0xdD2FD4581271e230360230F9337D5c0430BF44C0",
+      sender: "GAXJ2ZSRTYP5233UYEBUOSDLYBJ65Q3XH2Z5UMAJ46SA26NEXATJ3SLV",
+      receiver: "GAE6JHVF7TOZ3SDQHT5JMIKP67BLBP3NOSNRL5GSOL2NJZNU7UNCIUMC",
       amount: "3.2",
-      tokenSymbol: "MON",
+      tokenSymbol: "XLM",
       ipfsHash: "QmYwAPzwh35SBaoafuiQQgNmoNd6STvtc6OcCcx5nBR52",
       timestamp: Math.floor(Date.now() / 1000) - 86400 * 5, // 5 days ago
-      txHash: "0x3bc98ea76ef543a21bc98ef76a8f2d5a3f12ab56ef8f2c3d5a1098ef7ca5b678",
+      txHash:
+        "3bc98ea76ef543a21bc98ef76a8f2d5a3f12ab56ef8f2c3d5a1098ef7ca5b678",
       purpose: "UX/UI Design Consultation",
       category: "Design",
       notes: "Figma workshop and landing page wireframes.",
       aiTitle: "Design Consultation",
-      aiSummary: "Payment for 2-hour Figma wireframing and design session.",
-      aiExplanation: "Covers standard consultation rate for landing page user flow optimizations and visual style system creation.",
-      aiTags: ["Design", "UX", "Freelance", "Figma"]
+      aiSummary: "Payment for a 2-hour Figma wireframing and design session.",
+      aiExplanation:
+        "Covers the standard consultation rate for landing page user flow optimizations and visual style system creation.",
+      aiTags: ["Design", "UX", "Freelance", "Figma"],
     },
     {
       id: "rcpt-d492aa7f",
-      sender: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-      receiver: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+      sender: "GAE6JHVF7TOZ3SDQHT5JMIKP67BLBP3NOSNRL5GSOL2NJZNU7UNCIUMC",
+      receiver: "GAXJ2ZSRTYP5233UYEBUOSDLYBJ65Q3XH2Z5UMAJ46SA26NEXATJ3SLV",
       amount: "25.0",
-      tokenSymbol: "USDC",
+      tokenSymbol: "XLM",
       ipfsHash: "QmYwAPzwh35SBaoafuiQQgNmoNd6STvtc6OcCcx5nBR53",
       timestamp: Math.floor(Date.now() / 1000) - 86400 * 12, // 12 days ago
-      txHash: "0x12ab56ef8f2c3d5a1098ef7ca5b678de0987f65eaef43a21bc98ef760x8f2d5a3",
-      purpose: "Antigravity AI API Credits",
+      txHash:
+        "12ab56ef8f2c3d5a1098ef7ca5b678de0987f65eaef43a21bc98ef76a8f2d5a",
+      purpose: "Soroban RPC Infrastructure Credits",
       category: "SaaS",
       notes: "Monthly subscription package.",
-      aiTitle: "AI API Credits",
-      aiSummary: "Payment of 25.0 USDC for Antigravity AI inference credits.",
-      aiExplanation: "Refills API token limits for ProofPal receipt generation and natural language query services.",
-      aiTags: ["SaaS", "AI", "Infrastructure"]
-    }
+      aiTitle: "RPC Infrastructure Credits",
+      aiSummary:
+        "Payment of 25.0 XLM for Soroban RPC infrastructure credits.",
+      aiExplanation:
+        "Refills the RPC quota used by StellarProof receipt generation and natural language query services.",
+      aiTags: ["SaaS", "Soroban", "Infrastructure"],
+    },
   ];
 }

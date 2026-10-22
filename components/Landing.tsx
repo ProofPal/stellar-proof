@@ -2,71 +2,86 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Shield, Brain, Search, FileText, HardDrive, Zap, ArrowRight, CheckCircle2 } from "lucide-react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import {
+  Shield,
+  Brain,
+  Search,
+  FileText,
+  HardDrive,
+  Zap,
+  ArrowRight,
+  CheckCircle2,
+} from "lucide-react";
+import { ConnectWalletButton } from "@/components/ConnectWalletButton";
+import { useStellarWallet } from "@/components/WalletProvider";
 
 interface LandingProps {
   onLaunchApp: () => void;
 }
 
 export function Landing({ onLaunchApp }: LandingProps) {
-  const { isConnected } = useAccount();
+  const { isConnected } = useStellarWallet();
 
   const features = [
     {
       icon: <Brain className="w-6 h-6 text-purple-400" />,
       title: "AI-Powered Receipts",
-      description: "Generates smart invoice titles, professional transaction summaries, friendly explanations, and tags automatically."
+      description:
+        "Generates smart invoice titles, professional transaction summaries, friendly explanations, and tags automatically.",
     },
     {
       icon: <Shield className="w-6 h-6 text-emerald-400" />,
-      title: "Cryptographic Verification",
-      description: "Creates verifiable proofs. Anyone can confirm receipt validity, sender/receiver keys, and blockchain blocks."
+      title: "Soroban Verification",
+      description:
+        "Receipt metadata is anchored in a Soroban smart contract, so anyone can prove the sender, recipient, amount and timestamp.",
     },
     {
       icon: <Search className="w-6 h-6 text-blue-400" />,
       title: "Natural Language Search",
-      description: "Search all payment histories naturally. Query: 'Show freelance receipts for July above 5 MON'."
+      description:
+        "Search all payment histories naturally. Query: 'Show freelance receipts for July above 5 XLM'.",
     },
     {
       icon: <FileText className="w-6 h-6 text-pink-400" />,
       title: "PDF Export",
-      description: "Download beautiful, Stripe-style PDF receipts optimized for professional business invoicing and tax records."
+      description:
+        "Download beautiful, Stripe-style PDF receipts optimized for professional business invoicing and tax records.",
     },
     {
       icon: <HardDrive className="w-6 h-6 text-amber-400" />,
       title: "Permanent IPFS Storage",
-      description: "Receipt metadata is permanently pinned to IPFS, ensuring database decentralization and immutable tracking."
+      description:
+        "Receipt metadata is permanently pinned to IPFS, ensuring database decentralization and immutable tracking.",
     },
     {
       icon: <Zap className="w-6 h-6 text-violet-400" />,
-      title: "Monad Powered",
-      description: "Built on Monad Testnet for sub-second confirmations, high-throughput, and extremely low gas fee transactions."
-    }
+      title: "Built on Stellar",
+      description:
+        "Payments settle in XLM in seconds for fractions of a cent, and the receipt is anchored in the same atomic transaction.",
+    },
   ];
 
   const steps = [
     {
       num: "01",
       title: "Connect Wallet",
-      desc: "Connect your Web3 wallet securely to the Monad Testnet."
+      desc: "Connect Freighter, xBull, Albedo, Lobstr or any Stellar wallet.",
     },
     {
       num: "02",
-      title: "Send Payment",
-      desc: "Fill in recipient details, amount, purpose, and trigger the transaction."
+      title: "Send XLM",
+      desc: "Fill in the recipient, amount, purpose and trigger one Stellar payment.",
     },
     {
       num: "03",
       title: "AI Generates Receipt",
-      desc: "Gemini AI generates summary metadata while files are pinned to IPFS."
+      desc: "Gemini AI writes the summary while metadata is pinned to IPFS.",
     },
     {
       num: "04",
-      title: "Verified Onchain",
-      desc: "The transaction receipt ID and IPFS CID are committed permanently onchain."
-    }
+      title: "Anchored on Soroban",
+      desc: "The same transaction records the receipt ID and IPFS CID onchain.",
+    },
   ];
 
   return (
@@ -79,14 +94,14 @@ export function Landing({ onLaunchApp }: LandingProps) {
       <header className="fixed top-0 left-0 right-0 z-50 py-4 px-6 md:px-12 flex justify-between items-center border-b border-white/5 glass">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center font-bold text-white text-lg">
-            P
+            S
           </div>
           <span className="font-semibold text-lg tracking-tight bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-            ProofPal AI
+            StellarProof
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <ConnectButton chainStatus="none" showBalance={false} />
+          <ConnectWalletButton />
           {isConnected && (
             <button
               onClick={onLaunchApp}
@@ -107,18 +122,19 @@ export function Landing({ onLaunchApp }: LandingProps) {
         >
           <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-purple-400 bg-purple-900/20 border border-purple-500/20 rounded-full mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-            Built for Monad Testnet
+            Powered by Stellar &amp; Soroban
           </span>
           <h1 className="text-4xl md:text-7xl font-extrabold tracking-tight mb-6 leading-tight">
-            Every crypto payment <br className="hidden md:inline" />
+            Every Stellar payment <br className="hidden md:inline" />
             deserves a{" "}
             <span className="bg-gradient-to-r from-purple-500 via-indigo-400 to-pink-500 bg-clip-text text-transparent">
               receipt.
             </span>
           </h1>
           <p className="text-lg md:text-xl text-zinc-400 max-w-3xl mx-auto mb-10 leading-relaxed">
-            ProofPal AI automatically generates professional, cryptographically verifiable, and
-            IPFS-stored payment receipts after blockchain transactions, searchable with natural language.
+            StellarProof automatically generates professional, cryptographically
+            verifiable, and IPFS-stored payment receipts after every Stellar
+            transaction, searchable with natural language.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -126,7 +142,7 @@ export function Landing({ onLaunchApp }: LandingProps) {
               onClick={onLaunchApp}
               className="group flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-purple-500/20 transition-all duration-200 cursor-pointer text-base"
             >
-              Generate Your First Onchain Receipt
+              Generate Your First Soroban Receipt
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -136,9 +152,12 @@ export function Landing({ onLaunchApp }: LandingProps) {
       {/* Feature Showcase Grid */}
       <section className="py-20 px-6 max-w-6xl mx-auto relative z-10 border-t border-white/5">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Packed with Elite Features</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            Packed with Elite Features
+          </h2>
           <p className="text-zinc-400 max-w-xl mx-auto">
-            Everything you expect from modern enterprise payment platforms, built directly onchain.
+            Everything you expect from a modern payment platform, built directly
+            on Stellar.
           </p>
         </div>
 
@@ -154,7 +173,9 @@ export function Landing({ onLaunchApp }: LandingProps) {
             >
               <div className="p-3 bg-white/5 rounded-xl w-fit">{feat.icon}</div>
               <h3 className="font-bold text-lg text-white">{feat.title}</h3>
-              <p className="text-zinc-400 text-sm leading-relaxed">{feat.description}</p>
+              <p className="text-zinc-400 text-sm leading-relaxed">
+                {feat.description}
+              </p>
             </motion.div>
           ))}
         </div>
@@ -163,7 +184,9 @@ export function Landing({ onLaunchApp }: LandingProps) {
       {/* How it Works Section */}
       <section className="py-20 px-6 max-w-6xl mx-auto relative z-10 border-t border-white/5">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Simple, Seamless Flow</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            Simple, Seamless Flow
+          </h2>
           <p className="text-zinc-400 max-w-xl mx-auto">
             Create professional documents in seconds with AI metadata generation.
           </p>
@@ -195,17 +218,35 @@ export function Landing({ onLaunchApp }: LandingProps) {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded bg-purple-600 flex items-center justify-center font-bold text-white text-xs">
-              P
+              S
             </div>
-            <span className="font-semibold text-zinc-300">ProofPal AI</span>
+            <span className="font-semibold text-zinc-300">StellarProof</span>
           </div>
           <div className="flex gap-6">
-            <a href="https://github.com/techAlhaji/proofpal-ai" target="_blank" rel="noreferrer" className="hover:text-white transition">GitHub</a>
-            <a href="https://github.com/techAlhaji/proofpal-ai#readme" target="_blank" rel="noreferrer" className="hover:text-white transition">Docs</a>
-            <a href="#" className="hover:text-white transition">Privacy</a>
-            <a href="#" className="hover:text-white transition">Terms</a>
+            <a
+              href="https://github.com/techAlhaji/stellarproof"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white transition"
+            >
+              GitHub
+            </a>
+            <a
+              href="https://github.com/techAlhaji/stellarproof#readme"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white transition"
+            >
+              Docs
+            </a>
+            <a href="#" className="hover:text-white transition">
+              Privacy
+            </a>
+            <a href="#" className="hover:text-white transition">
+              Terms
+            </a>
           </div>
-          <div>© {new Date().getFullYear()} ProofPal AI. Built for BuildAnything Hackathon.</div>
+          <div>© {new Date().getFullYear()} StellarProof. Built on Stellar.</div>
         </div>
       </footer>
     </div>

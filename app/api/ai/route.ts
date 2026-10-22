@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       console.warn("GEMINI_API_KEY is not configured. Using high-quality local fallback templates.");
       
       const categoryTag = category ? category.trim() : "Crypto";
-      const tags = [categoryTag, "Monad", "Onchain", "Verified"];
+      const tags = [categoryTag, "Stellar", "Soroban", "Verified"];
       if (purpose && purpose.toLowerCase().includes("freelance")) tags.push("Freelance");
       if (purpose && purpose.toLowerCase().includes("design")) tags.push("Design");
       if (amount && parseFloat(amount) > 10) tags.push("High Value");
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       const mockData = {
         aiTitle: purpose ? `Payment for ${purpose}` : "Cryptocurrency Payment Receipt",
         aiSummary: `Onchain transfer of ${amount} ${tokenSymbol} from ${sender.slice(0, 6)}...${sender.slice(-4)} to ${receiver.slice(0, 6)}...${receiver.slice(-4)} for "${purpose || 'General payment'}".`,
-        aiExplanation: `This transaction completed successfully on the Monad Testnet. The payment covers services described as "${purpose || 'General payment'}"${notes ? ` with supplementary notes: "${notes}"` : ""}. It stands as a cryptographically verifiable proof of payment.`,
+        aiExplanation: `This transaction completed successfully on the Stellar Testnet. The payment covers services described as "${purpose || 'General payment'}"${notes ? ` with supplementary notes: "${notes}"` : ""}. It stands as a cryptographically verifiable proof of payment, anchored in the StellarProof Soroban contract.`,
         aiTags: tags,
         category: categoryTag
       };
@@ -29,7 +29,8 @@ export async function POST(request: Request) {
     }
 
     const prompt = `
-You are a financial AI receipt assistant. Analyze this crypto payment transaction:
+You are a financial AI receipt assistant. Analyze this Stellar network payment transaction:
+Network: Stellar Testnet (Soroban smart contract receipts)
 Amount: ${amount} ${tokenSymbol}
 Purpose: ${purpose}
 Category: ${category}
@@ -83,10 +84,10 @@ Response must be pure JSON. Do not include markdown code block formatting or bac
     // Graceful error fallback so that receipt creation never hangs
     return NextResponse.json({
       success: true,
-      aiTitle: "Monad Transaction Receipt",
-      aiSummary: "AI summary generation bypassed. Transaction confirmed on Monad testnet.",
-      aiExplanation: "Verification completed successfully. This represents a cryptographically secure receipt recorded onchain.",
-      aiTags: ["Monad", "Payment", "Verified"],
+      aiTitle: "Stellar Transaction Receipt",
+      aiSummary: "AI summary generation bypassed. Transaction confirmed on the Stellar testnet.",
+      aiExplanation: "Verification completed successfully. This represents a cryptographically secure receipt recorded in a Soroban contract.",
+      aiTags: ["Stellar", "Payment", "Verified"],
       category: "Finance",
       error: error.message
     });

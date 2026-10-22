@@ -8,11 +8,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ProofPal AI - Professional Onchain Crypto Receipts",
-  description: "Automatically generate, naturally search, and cryptographically verify professional AI-powered payment receipts after every blockchain transaction on the Monad network.",
+  title: "StellarProof - Professional Onchain Stellar Receipts",
+  description: "Automatically generate, naturally search, and cryptographically verify professional AI-powered payment receipts for every Stellar payment, anchored in a Soroban smart contract.",
   openGraph: {
-    title: "ProofPal AI - Professional Onchain Crypto Receipts",
-    description: "Every crypto payment deserves a receipt. ProofPal AI creates professional, AI-powered receipts after every transaction, verifiable onchain.",
+    title: "StellarProof - Professional Onchain Stellar Receipts",
+    description: "Every Stellar payment deserves a receipt. StellarProof creates professional, AI-powered receipts after every transaction, verifiable onchain with Soroban.",
     type: "website",
   },
 };

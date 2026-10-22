@@ -1,71 +1,166 @@
 "use client";
 
-import React from "react";
-import "@rainbow-me/rainbowkit/styles.css";
-import {
-  getDefaultWallets,
-  RainbowKitProvider,
-  darkTheme,
-} from "@rainbow-me/rainbowkit";
-import { configureChains, createConfig, WagmiConfig } from "wagmi";
-import { publicProvider } from "wagmi/providers/public";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { STELLAR_NETWORK } from "@/lib/stellar";
 
-// Define custom Monad Testnet chain (EVM compatible)
-export const monadTestnet = {
-  id: 10143,
-  name: "Monad Testnet",
-  network: "monad-testnet",
-  nativeCurrency: {
-    decimals: 18,
-    name: "Monad MON",
-    symbol: "MON",
-  },
-  rpcUrls: {
-    public: { http: ["https://testnet-rpc.monad.xyz"] },
-    default: { http: ["https://testnet-rpc.monad.xyz"] },
-  },
-  blockExplorers: {
-    default: { name: "MonadExplorer", url: "https://testnet.monadexplorer.com" },
-  },
-  testnet: true,
-};
+type Kit = typeof import("@creit.tech/stellar-wallets-kit/sdk").StellarWalletsKit;
 
-// Configure chains & providers using Wagmi v1 architecture
-const { chains, publicClient, webSocketPublicClient } = configureChains(
-  [monadTestnet],
-  [publicProvider()]
-);
+interface WalletContextValue {
+  address: string | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  error: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  signTransaction: (xdr: string) => Promise<string>;
+}
 
-// Get default wallets configuration for RainbowKit
-const { connectors } = getDefaultWallets({
-  appName: "ProofPal AI",
-  projectId: "ca29e03d12fa4293bc12ab56ef8f2c3d", // Standard project ID (can be set via env later)
-  chains,
-});
+const WalletContext = createContext<WalletContextValue | null>(null);
 
-const wagmiConfig = createConfig({
-  autoConnect: true,
-  connectors,
-  publicClient,
-  webSocketPublicClient,
-});
+/**
+ * Stellar Wallets Kit is browser-only, so it is loaded lazily the first time a
+ * wallet interaction is needed instead of at module scope (which would break
+ * server rendering).
+ */
+let kitPromise: Promise<Kit> | null = null;
+
+function getKit(): Promise<Kit> {
+  if (!kitPromise) {
+    kitPromise = (async () => {
+      const [{ StellarWalletsKit }, { defaultModules }, { Networks }] =
+        await Promise.all([
+          import("@creit.tech/stellar-wallets-kit/sdk"),
+          import("@creit.tech/stellar-wallets-kit/modules/utils"),
+          import("@creit.tech/stellar-wallets-kit/types"),
+        ]);
+
+      StellarWalletsKit.init({
+        modules: defaultModules(),
+        network: Networks.TESTNET,
+      });
+
+      return StellarWalletsKit;
+    })();
+  }
+
+  return kitPromise;
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  return "The Stellar wallet request failed. Please try again.";
+}
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const [address, setAddress] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Restore an existing wallet session and follow wallet-driven state changes.
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const kit = await getKit();
+        const { KitEventType } = await import(
+          "@creit.tech/stellar-wallets-kit/types"
+        );
+
+        unsubscribe = kit.on(KitEventType.STATE_UPDATED, (event) => {
+          setAddress(event.payload.address ?? null);
+        });
+
+        const stored = await kit.getAddress();
+        if (!cancelled && stored.address) setAddress(stored.address);
+      } catch {
+        // No wallet session yet: the user will connect manually.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  const connect = useCallback(async () => {
+    setIsConnecting(true);
+    setError(null);
+
+    try {
+      const kit = await getKit();
+      const { address: connected } = await kit.authModal();
+      if (!connected) {
+        throw new Error("The wallet did not return an address.");
+      }
+      setAddress(connected);
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
+  const disconnect = useCallback(async () => {
+    try {
+      const kit = await getKit();
+      await kit.disconnect();
+    } catch (err) {
+      console.warn("Wallet disconnect failed:", err);
+    } finally {
+      setAddress(null);
+    }
+  }, []);
+
+  const signTransaction = useCallback(
+    async (xdr: string) => {
+      const kit = await getKit();
+      if (!address) {
+        throw new Error("Connect a Stellar wallet before signing.");
+      }
+
+      const { signedTxXdr } = await kit.signTransaction(xdr, {
+        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        address,
+      });
+
+      return signedTxXdr;
+    },
+    [address]
+  );
+
+  const value = useMemo<WalletContextValue>(
+    () => ({
+      address,
+      isConnected: Boolean(address),
+      isConnecting,
+      error,
+      connect,
+      disconnect,
+      signTransaction,
+    }),
+    [address, isConnecting, error, connect, disconnect, signTransaction]
+  );
+
   return (
-    <WagmiConfig config={wagmiConfig}>
-      <RainbowKitProvider
-        chains={chains}
-        theme={darkTheme({
-          accentColor: "#8A2BE2", // Indigo / Monad theme purple
-          accentColorForeground: "white",
-          borderRadius: "medium",
-          overlayBlur: "small",
-        })}
-        modalSize="compact"
-      >
-        {children}
-      </RainbowKitProvider>
-    </WagmiConfig>
+    <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
   );
 }
-export { chains };
+
+export function useStellarWallet(): WalletContextValue {
+  const context = useContext(WalletContext);
+  if (!context) {
+    throw new Error("useStellarWallet must be used inside a WalletProvider.");
+  }
+  return context;
+}

@@ -71,10 +71,10 @@ export default function Home() {
         <header className="flex md:hidden items-center justify-between px-6 py-4 border-b border-white/5 bg-[#09090b]/80 backdrop-blur sticky top-0 z-30">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center font-bold text-white text-sm">
-              P
+              S
             </div>
             <span className="font-semibold text-sm tracking-tight text-white">
-              ProofPal AI
+              StellarProof
             </span>
           </div>
           <button

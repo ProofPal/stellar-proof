@@ -76,12 +76,12 @@ export async function POST(request: Request) {
     }));
 
     const prompt = `
-Given a user natural language search query and a list of cryptocurrency receipts, return the array of receipt IDs that match the search criteria.
+Given a user natural language search query and a list of Stellar payment receipts, return the array of receipt IDs that match the search criteria.
 Search query: "${query}"
 Receipts data:
 ${JSON.stringify(receiptsShortList, null, 2)}
 
-Match criteria can include amounts (e.g. "above 5 MON"), dates (e.g. "in July", "yesterday"), categories, tags, sender/receiver, or purpose keywords.
+Match criteria can include amounts (e.g. "above 5 XLM"), dates (e.g. "in July", "yesterday"), categories, tags, sender/receiver, or purpose keywords.
 Return only a JSON array of strings containing the matching receipt IDs.
 Example output format:
 ["receipt-uuid-1", "receipt-uuid-2"]

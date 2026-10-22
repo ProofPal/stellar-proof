@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         pinataContent: metadata,
         pinataMetadata: {
-          name: `ProofPal-Receipt-${receiptId}`,
+          name: `StellarProof-Receipt-${receiptId}`,
         },
       }),
     });

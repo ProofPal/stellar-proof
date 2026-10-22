@@ -144,7 +144,7 @@ export function ReceiptsList({ receipts, onViewDetail }: ReceiptsListProps) {
               setSearchQuery(e.target.value);
               if (!e.target.value) setAiMatchingIds(null);
             }}
-            placeholder="Search naturally, e.g., 'Show freelance receipts for July above 5 MON'..."
+            placeholder="Search naturally, e.g., 'Show freelance receipts for July above 5 XLM'..."
             className="w-full pl-11 pr-24 py-3 bg-zinc-900/40 border border-white/5 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 transition"
           />
           {aiMatchingIds !== null && (

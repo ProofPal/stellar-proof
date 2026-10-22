@@ -128,7 +128,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Total Volume
             </span>
-            <span className="text-2xl font-bold text-white">{stats.totalVolume} MON</span>
+            <span className="text-2xl font-bold text-white">{stats.totalVolume} XLM</span>
           </div>
           <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-xl">
             <DollarSign className="w-5 h-5" />
@@ -145,7 +145,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Business Payments
             </span>
-            <span className="text-2xl font-bold text-white">{stats.businessVolume} MON</span>
+            <span className="text-2xl font-bold text-white">{stats.businessVolume} XLM</span>
           </div>
           <div className="p-3 bg-emerald-600/10 text-emerald-400 rounded-xl">
             <TrendingUp className="w-5 h-5" />
@@ -162,7 +162,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
             <span className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">
               Avg Payment
             </span>
-            <span className="text-2xl font-bold text-white">{stats.average} MON</span>
+            <span className="text-2xl font-bold text-white">{stats.average} XLM</span>
           </div>
           <div className="p-3 bg-amber-600/10 text-amber-400 rounded-xl">
             <Wallet className="w-5 h-5" />
@@ -176,7 +176,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
         <div className="p-6 bg-zinc-900/40 border border-white/5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
           <div>
             <h3 className="font-bold text-base text-white">Payment Volume History</h3>
-            <p className="text-zinc-500 text-xs mt-0.5">Aggregate values indexed from blockchain txs.</p>
+            <p className="text-zinc-500 text-xs mt-0.5">Aggregate values indexed from Stellar transactions.</p>
           </div>
           <div className="h-64 w-full">
             {chartData.length === 0 ? (
@@ -275,7 +275,7 @@ export function Overview({ receipts, onViewDetail }: OverviewProps) {
         <div className="flex justify-between items-center">
           <div>
             <h3 className="font-bold text-base text-white">Recent Receipts</h3>
-            <p className="text-zinc-500 text-xs mt-0.5">Latest receipts saved and logged on Monad.</p>
+            <p className="text-zinc-500 text-xs mt-0.5">Latest receipts saved and anchored on Stellar.</p>
           </div>
         </div>
 

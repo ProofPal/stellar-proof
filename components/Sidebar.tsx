@@ -1,9 +1,15 @@
 "use client";
 
 import React from "react";
-import { LayoutDashboard, FileText, PlusCircle, Settings, LogOut, Wallet, X } from "lucide-react";
-import { useAccount, useDisconnect, useNetwork, useSwitchNetwork } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import {
+  LayoutDashboard,
+  FileText,
+  PlusCircle,
+  Settings,
+  X,
+} from "lucide-react";
+import { ConnectWalletButton } from "@/components/ConnectWalletButton";
+import { STELLAR_NETWORK } from "@/lib/stellar";
 
 interface SidebarProps {
   currentTab: string;
@@ -13,15 +19,13 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-export function Sidebar({ currentTab, onTabChange, onBackToLanding, isOpen, onClose }: SidebarProps) {
-  const { address, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
-  const { chain } = useNetwork();
-  const { switchNetwork } = useSwitchNetwork();
-
-  // Monad chain ID is 10143
-  const isWrongNetwork = isConnected && chain && chain.id !== 10143;
-
+export function Sidebar({
+  currentTab,
+  onTabChange,
+  onBackToLanding,
+  isOpen,
+  onClose,
+}: SidebarProps) {
   const menuItems = [
     { id: "overview", name: "Overview", icon: <LayoutDashboard className="w-5 h-5" /> },
     { id: "receipts", name: "Receipts", icon: <FileText className="w-5 h-5" /> },
@@ -53,10 +57,10 @@ export function Sidebar({ currentTab, onTabChange, onBackToLanding, isOpen, onCl
               className="flex items-center gap-2 cursor-pointer group"
             >
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center font-bold text-white text-lg transition-transform group-hover:scale-105">
-                P
+                S
               </div>
               <span className="font-semibold text-lg tracking-tight bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
-                ProofPal AI
+                StellarProof
               </span>
             </div>
             {/* Mobile Close Button */}
@@ -70,23 +74,17 @@ export function Sidebar({ currentTab, onTabChange, onBackToLanding, isOpen, onCl
             )}
           </div>
 
-          {/* Network Warning Box */}
-          {isWrongNetwork && (
-            <div className="p-3.5 bg-red-950/20 border border-red-500/20 rounded-xl flex flex-col gap-2">
-              <p className="text-xs text-red-400 font-medium">Wrong Network Connected</p>
-              <p className="text-[10px] text-zinc-500 leading-normal">
-                Please switch to Monad Testnet to submit transactions.
-              </p>
-              {switchNetwork && (
-                <button
-                  onClick={() => switchNetwork(10143)}
-                  className="w-full text-center py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition"
-                >
-                  Switch Network
-                </button>
-              )}
-            </div>
-          )}
+          {/* Network Badge */}
+          <div className="p-3.5 bg-purple-950/10 border border-purple-500/15 rounded-xl flex flex-col gap-1">
+            <span className="text-xs text-purple-300 font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              {STELLAR_NETWORK.name}
+            </span>
+            <span className="text-[10px] text-zinc-500 leading-normal">
+              Soroban receipts are anchored on Stellar&apos;s smart contract
+              runtime.
+            </span>
+          </div>
 
           {/* Menu Items */}
           <nav className="flex flex-col gap-1.5">
@@ -112,27 +110,15 @@ export function Sidebar({ currentTab, onTabChange, onBackToLanding, isOpen, onCl
 
         {/* Wallet Box / Footer */}
         <div className="flex flex-col gap-4 border-t border-white/5 pt-4">
-          {isConnected ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 px-1">
-                <Wallet className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-mono text-zinc-400">
-                  {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ""}
-                </span>
-              </div>
-              <button
-                onClick={() => disconnect()}
-                className="flex items-center justify-center gap-2 w-full py-2 border border-white/5 hover:bg-white/5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white transition"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <ConnectButton chainStatus="none" showBalance={false} />
-            </div>
-          )}
+          <ConnectWalletButton />
+          <a
+            href={STELLAR_NETWORK.friendbotUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition text-center"
+          >
+            Need testnet XLM? Use Friendbot
+          </a>
         </div>
       </aside>
     </>
