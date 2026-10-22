@@ -3,6 +3,7 @@ import {
   Asset,
   BASE_FEE,
   Contract,
+  Horizon,
   StrKey,
   TransactionBuilder,
   nativeToScVal,
@@ -13,9 +14,11 @@ import {
 import {
   STELLARPROOF_CONTRACT_ID,
   STELLAR_NETWORK,
+  getAssetOption,
   hasDeployedContract,
   stroopsToXlm,
   xlmToStroops,
+  type AccountSummary,
   type OnchainReceipt,
 } from "@/lib/stellar";
 
@@ -64,7 +67,127 @@ export interface PreparePaymentParams {
   receiptId: string;
   ipfsHash: string;
   purpose: string;
+  /** Asset code offered by the app (XLM, USDC, ...). Defaults to XLM. */
+  assetCode?: string;
+  /** Explicit Stellar Asset Contract address, for any other asset. */
+  assetSac?: string;
   tokenSymbol?: string;
+}
+
+interface ResolvedAsset {
+  code: string;
+  issuer?: string;
+  /** Stellar Asset Contract address that holds the asset on Soroban. */
+  tokenSac: string;
+}
+
+/**
+ * Maps an asset code (or an explicit SAC address) to the token contract the
+ * Soroban receipt registry should move funds through.
+ */
+export function resolveAsset(params: {
+  assetCode?: string;
+  assetSac?: string;
+  tokenSymbol?: string;
+}): ResolvedAsset {
+  if (params.assetSac?.trim()) {
+    const sac = params.assetSac.trim();
+    if (!/^C[A-Z2-7]{55}$/.test(sac)) {
+      throw new StellarApiError(
+        "The provided asset contract address is not a valid Soroban contract id."
+      );
+    }
+    return {
+      code: (params.tokenSymbol || "TOKEN").trim().toUpperCase(),
+      tokenSac: sac,
+    };
+  }
+
+  const code = (params.assetCode || params.tokenSymbol || "XLM")
+    .trim()
+    .toUpperCase();
+
+  if (code === "XLM") {
+    return {
+      code,
+      tokenSac: Asset.native().contractId(STELLAR_NETWORK.networkPassphrase),
+    };
+  }
+
+  const option = getAssetOption(code);
+  if (!option?.issuer) {
+    throw new StellarApiError(
+      `Unsupported asset "${code}". Add its issuer to SUPPORTED_ASSETS or pass an explicit SAC address.`
+    );
+  }
+
+  return {
+    code,
+    issuer: option.issuer,
+    tokenSac: new Asset(code, option.issuer).contractId(
+      STELLAR_NETWORK.networkPassphrase
+    ),
+  };
+}
+
+/**
+ * Checks the payer's balance and trustline before building the transaction so
+ * the user gets an actionable message instead of a raw simulation error.
+ */
+async function assertPaymentCapacity(
+  sender: string,
+  amountStroops: bigint,
+  asset: ResolvedAsset
+): Promise<void> {
+  const horizon = new Horizon.Server(STELLAR_NETWORK.horizonUrl);
+
+  let account: Horizon.AccountResponse;
+  try {
+    account = await horizon.loadAccount(sender);
+  } catch {
+    throw new StellarApiError(
+      `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`
+    );
+  }
+
+  if (asset.code === "XLM" && !asset.issuer) {
+    const native = account.balances.find((b) => b.asset_type === "native");
+    const balance = native ? xlmToStroops(native.balance) : 0n;
+
+    if (balance < amountStroops) {
+      throw new StellarApiError(
+        `Insufficient XLM balance: ${stroopsToXlm(balance)} XLM available, ${stroopsToXlm(amountStroops)} XLM requested.`
+      );
+    }
+    return;
+  }
+
+  if (!asset.issuer) {
+    // The caller passed a raw SAC address, so the issuer (and therefore the
+    // trustline to compare against) is unknown here. Simulation remains the
+    // authoritative check for those assets.
+    return;
+  }
+
+  const trustline = account.balances.find(
+    (b): b is Horizon.HorizonApi.BalanceLineAsset =>
+      b.asset_type !== "native" &&
+      b.asset_type !== "liquidity_pool_shares" &&
+      b.asset_code === asset.code &&
+      b.asset_issuer === asset.issuer
+  );
+
+  if (!trustline) {
+    throw new StellarApiError(
+      `This account has no ${asset.code} trustline. Add a ${asset.code} trustline in your wallet before paying with ${asset.code}.`
+    );
+  }
+
+  if (xlmToStroops(trustline.balance) < amountStroops) {
+    throw new StellarApiError(
+      `Insufficient ${asset.code} balance: ${trustline.balance} ${asset.code} available.`
+    );
+  }
 }
 
 export interface PreparedPayment {
@@ -74,9 +197,9 @@ export interface PreparedPayment {
 }
 
 /**
- * Builds the Soroban `create_receipt` invocation. The contract moves the XLM
- * (through the native Stellar Asset Contract) and stores the receipt in the
- * same atomic call, so the user signs exactly one operation.
+ * Builds the Soroban `create_receipt` invocation. The contract moves the asset
+ * (native XLM by default, through its Stellar Asset Contract) and stores the
+ * receipt in the same atomic call, so the user signs exactly one operation.
  */
 export async function buildReceiptPayment(
   params: PreparePaymentParams
@@ -107,6 +230,10 @@ export async function buildReceiptPayment(
     throw new StellarApiError("Amount must be greater than zero.");
   }
 
+  // Resolve the asset (native XLM by default) to its Stellar Asset Contract.
+  const asset = resolveAsset(params);
+  await assertPaymentCapacity(sender, stroops, asset);
+
   const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
 
   let source;
@@ -117,11 +244,6 @@ export async function buildReceiptPayment(
       `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`
     );
   }
-
-  // Native XLM is represented onchain by its Stellar Asset Contract address.
-  const nativeToken = new Address(
-    Asset.native().contractId(STELLAR_NETWORK.networkPassphrase)
-  );
 
   const contract = new Contract(contractId);
   const transaction = new TransactionBuilder(source, {
@@ -134,11 +256,9 @@ export async function buildReceiptPayment(
         new Address(sender).toScVal(),
         nativeToScVal(params.receiptId, { type: "string" }),
         new Address(receiver).toScVal(),
-        nativeToken.toScVal(),
+        new Address(asset.tokenSac).toScVal(),
         nativeToScVal(stroops, { type: "i128" }),
-        nativeToScVal(params.tokenSymbol || STELLAR_NETWORK.nativeSymbol, {
-          type: "string",
-        }),
+        nativeToScVal(asset.code, { type: "string" }),
         nativeToScVal(params.ipfsHash, { type: "string" }),
         nativeToScVal(params.purpose, { type: "string" })
       )
@@ -150,11 +270,17 @@ export async function buildReceiptPayment(
   try {
     prepared = await server.prepareTransaction(transaction);
   } catch (err) {
-    throw new StellarApiError(
-      `Soroban simulation failed: ${
-        err instanceof Error ? err.message : "unknown error"
-      }`
-    );
+    const detail = err instanceof Error ? err.message : "unknown error";
+
+    // A Stellar Asset Contract only exists once it has been deployed on the
+    // network; the host reports that as a missing contract instance.
+    if (/MissingValue|non-existing value for contract instance/.test(detail)) {
+      throw new StellarApiError(
+        `The ${asset.code} Stellar Asset Contract is not deployed on ${STELLAR_NETWORK.name}. Deploy it (stellar contract asset deploy --asset ${asset.code}:${asset.issuer ?? "<issuer>"}) and try again.`
+      );
+    }
+
+    throw new StellarApiError(`Soroban simulation failed: ${detail}`);
   }
 
   return {
@@ -202,6 +328,69 @@ export async function submitSignedTransaction(
   }
 
   return { txHash: sent.hash };
+}
+
+/**
+ * Returns the payer's balances plus a network fee estimate for the form.
+ */
+export async function getAccountSummary(
+  address: string
+): Promise<AccountSummary> {
+  const account = assertStellarAddress(address, "Account");
+  const horizon = new Horizon.Server(STELLAR_NETWORK.horizonUrl);
+
+  let horizonAccount: Horizon.AccountResponse;
+  try {
+    horizonAccount = await horizon.loadAccount(account);
+  } catch {
+    throw new StellarApiError(
+      `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`,
+      404
+    );
+  }
+
+  const native = horizonAccount.balances.find(
+    (b) => b.asset_type === "native"
+  );
+  const balance = native ? xlmToStroops(native.balance) : 0n;
+
+  // Base reserve is 0.5 XLM per entry: 2 for the account, 1 per subentry.
+  const reserve =
+    BigInt(2 + (horizonAccount.subentry_count ?? 0)) * 5_000_000n;
+  const spendable = balance > reserve ? balance - reserve : 0n;
+
+  const assets = horizonAccount.balances
+    .filter(
+      (b): b is Horizon.HorizonApi.BalanceLineAsset =>
+        b.asset_type !== "native" && b.asset_type !== "liquidity_pool_shares"
+    )
+    .map((b) => ({
+      code: b.asset_code,
+      balance: b.balance,
+      issuer: b.asset_issuer,
+    }));
+
+  let inclusionFee = 0n;
+  try {
+    const feeStats = await new rpc.Server(
+      STELLAR_NETWORK.rpcUrl
+    ).getFeeStats();
+    inclusionFee = BigInt(feeStats.sorobanInclusionFee.p50 || "0");
+  } catch {
+    // Fee stats are best effort; the wallet shows the final fee anyway.
+  }
+
+  const feeEstimate = BigInt(BASE_FEE) + inclusionFee;
+
+  return {
+    address: account,
+    balanceXlm: stroopsToXlm(balance),
+    spendableXlm: stroopsToXlm(spendable),
+    reserveXlm: stroopsToXlm(reserve),
+    assets,
+    feeEstimateXlm: stroopsToXlm(feeEstimate),
+    feeEstimateStroops: feeEstimate.toString(),
+  };
 }
 
 /**

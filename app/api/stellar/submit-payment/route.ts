@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { StellarApiError, submitSignedTransaction } from "@/lib/stellar-server";
 
 export const dynamic = "force-dynamic";
+// Stellar RPC and Horizon responses must always be live (no Next data cache).
+export const fetchCache = "force-no-store";
 
 /**
  * Submits the wallet-signed envelope to Soroban RPC and waits for the

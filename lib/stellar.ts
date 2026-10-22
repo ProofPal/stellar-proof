@@ -36,6 +36,64 @@ export const hasDeployedContract = /^C[A-Z2-7]{55}$/.test(
 /** Stellar assets have 7 decimal places (1 XLM = 10,000,000 stroops). */
 export const STROOPS_PER_UNIT = 10_000_000n;
 
+/** Circle's USDC issuer on Stellar Testnet. */
+export const TESTNET_USDC_ISSUER =
+  process.env.NEXT_PUBLIC_USDC_ISSUER ||
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+
+export interface AssetOption {
+  code: string;
+  label: string;
+  /** Undefined for the native asset (XLM). */
+  issuer?: string;
+}
+
+/** Assets offered in the payment form. */
+export const SUPPORTED_ASSETS: AssetOption[] = [
+  { code: "XLM", label: "Stellar Lumens" },
+  { code: "USDC", label: "USD Coin", issuer: TESTNET_USDC_ISSUER },
+];
+
+export function getAssetOption(code: string): AssetOption | undefined {
+  return SUPPORTED_ASSETS.find(
+    (asset) => asset.code === code.trim().toUpperCase()
+  );
+}
+
+export interface AccountAssetBalance {
+  code: string;
+  balance: string;
+  issuer?: string;
+}
+
+export interface AccountSummary {
+  address: string;
+  balanceXlm: string;
+  spendableXlm: string;
+  reserveXlm: string;
+  assets: AccountAssetBalance[];
+  feeEstimateXlm: string;
+  feeEstimateStroops: string;
+}
+
+/** Fetches balances and a network fee estimate for the connected account. */
+export async function fetchAccountSummary(
+  address: string
+): Promise<AccountSummary | null> {
+  try {
+    const response = await fetch(
+      `/api/stellar/account?address=${encodeURIComponent(address)}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.account ?? null;
+  } catch (error) {
+    console.warn("Stellar account summary failed:", error);
+    return null;
+  }
+}
+
 export interface OnchainReceipt {
   receiptId: string;
   sender: string;

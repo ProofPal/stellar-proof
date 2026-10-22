@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Sparkles,
   ArrowRight,
@@ -11,9 +11,12 @@ import {
 import { saveReceipt, ReceiptData } from "@/lib/db";
 import {
   STELLAR_NETWORK,
+  SUPPORTED_ASSETS,
   hasDeployedContract,
   isValidStellarAddress,
   xlmToStroops,
+  fetchAccountSummary,
+  type AccountSummary,
 } from "@/lib/stellar";
 import { useStellarWallet } from "@/components/WalletProvider";
 
@@ -37,6 +40,9 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
   // Form State
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
+  const [assetCode, setAssetCode] = useState("XLM");
+  const [summary, setSummary] = useState<AccountSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [purpose, setPurpose] = useState("");
   const [category, setCategory] = useState("Freelance");
   const [notes, setNotes] = useState("");
@@ -46,7 +52,34 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
   const [errorMessage, setErrorMessage] = useState("");
   const [currentProgressText, setCurrentProgressText] = useState("");
 
-  const tokenSymbol = STELLAR_NETWORK.nativeSymbol;
+  const tokenSymbol = assetCode;
+
+  // Load the payer's balances and the current network fee estimate.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!userAddress) {
+      setSummary(null);
+      return;
+    }
+
+    setSummaryLoading(true);
+    fetchAccountSummary(userAddress)
+      .then((result) => {
+        if (!cancelled) setSummary(result);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userAddress]);
+
+  const selectedAssetBalance = summary?.assets.find(
+    (asset) => asset.code === assetCode
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +228,7 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
             ipfsHash,
             purpose: cleanPurpose,
             tokenSymbol,
+            assetCode,
           }),
         });
 
@@ -369,14 +403,61 @@ export function CreatePayment({ onSuccess, mockMode }: CreatePaymentProps) {
                 <label className="text-xs text-zinc-400 font-semibold tracking-wide uppercase">
                   Asset
                 </label>
-                <div className="w-full px-4 py-3 bg-zinc-900/40 border border-white/5 rounded-xl text-sm text-zinc-300 font-bold flex items-center justify-between">
-                  {tokenSymbol}
-                  <span className="text-[10px] font-medium text-zinc-500">
-                    native
-                  </span>
-                </div>
+                <select
+                  value={assetCode}
+                  onChange={(e) => setAssetCode(e.target.value)}
+                  className="w-full px-4 py-3 bg-zinc-900/50 border border-white/5 rounded-xl text-sm text-white focus:outline-none focus:border-purple-600 transition cursor-pointer font-bold"
+                >
+                  {SUPPORTED_ASSETS.map((asset) => (
+                    <option key={asset.code} value={asset.code}>
+                      {asset.code}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {/* Balance + fee summary */}
+            {isConnected && (
+              <div className="flex flex-col gap-1.5 p-3.5 bg-purple-950/10 border border-purple-500/15 rounded-xl text-[11px] text-zinc-400">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-zinc-300">
+                    {tokenSymbol} balance
+                  </span>
+                  <span className="font-mono text-white">
+                    {assetCode === "XLM"
+                      ? summary
+                        ? `${summary.balanceXlm} XLM`
+                        : summaryLoading
+                        ? "loading..."
+                        : "unavailable"
+                      : selectedAssetBalance
+                      ? `${selectedAssetBalance.balance} ${assetCode}`
+                      : "no trustline"}
+                  </span>
+                </div>
+                {assetCode === "XLM" && summary && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Spendable after reserve ({summary.reserveXlm} XLM)</span>
+                    <span className="font-mono text-zinc-300">
+                      {summary.spendableXlm} XLM
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-3">
+                  <span>Est. network fee</span>
+                  <span className="font-mono text-zinc-300">
+                    {summary ? `≈ ${summary.feeEstimateXlm} XLM` : "—"}
+                  </span>
+                </div>
+                {assetCode !== "XLM" && !selectedAssetBalance && (
+                  <p className="text-[10px] text-amber-300 leading-normal">
+                    Add a {assetCode} trustline in your wallet before paying with
+                    {` ${assetCode}`}.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Purpose */}
             <div className="flex flex-col gap-2">

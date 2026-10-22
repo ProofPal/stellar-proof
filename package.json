@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
     "contract:build": "stellar contract build",
     "contract:test": "cargo test",
     "deploy:testnet": "tsx scripts/deploy.ts"

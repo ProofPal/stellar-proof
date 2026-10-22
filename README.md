@@ -16,7 +16,7 @@ Nothing in the payment, receipt or verification path touches an EVM chain — th
 
 * **Frontend**: Next.js 14 App Router, TypeScript, TailwindCSS v3, Framer Motion
 * **Wallet**: [Stellar Wallets Kit](https://stellarwalletskit.dev) (Freighter, xBull, Albedo, Lobstr, Hana, Rabet, WalletConnect, hardware wallets)
-* **Blockchain**: Stellar Testnet — native XLM payments + Soroban smart contracts
+* **Blockchain**: Stellar Testnet — XLM and issued-asset (USDC, …) payments through Stellar Asset Contracts + Soroban smart contracts
 * **SDK**: `@stellar/stellar-sdk` (Horizon + Soroban RPC)
 * **Smart Contract**: Rust + `soroban-sdk` 29
 * **Storage & Database**: Pinata IPFS Gateway, Supabase (with offline local failover)
@@ -42,7 +42,15 @@ A payment and its receipt are a **single Soroban invocation**:
 2. The wallet signs the envelope once through Stellar Wallets Kit (`signTransaction`).
 3. `POST /api/stellar/submit-payment` submits it over Soroban RPC and polls until `SUCCESS`.
 
-Inside the contract, `token::Client::transfer()` moves XLM from the sender to the recipient through the native Stellar Asset Contract, then the receipt metadata is written to persistent storage. Either both happen or the transaction reverts.
+Inside the contract, `token::Client::transfer()` moves the asset from the sender to the recipient through its Stellar Asset Contract, then the receipt metadata is written to persistent storage. Either both happen or the transaction reverts.
+
+### Multi-asset payments
+
+`create_receipt` takes a `token: Address`, so any Stellar Asset Contract works:
+
+* **XLM** — the native asset contract, resolved from the network passphrase by the server.
+* **USDC** — `USDC:<issuer>` (Circle's Testnet issuer by default, override with `NEXT_PUBLIC_USDC_ISSUER`). The payer needs a USDC trustline and balance; both are checked before signing.
+* **Any other asset** — pass its SAC address as `assetSac` to `/api/stellar/prepare-payment`. The asset's Stellar Asset Contract must be deployed first (`stellar contract asset deploy --asset CODE:ISSUER`), otherwise the API returns a clear error.
 
 Verification is stateless: the public `/verify/[id]` page asks the server to derive the Soroban storage key for `DataKey::Receipt(receipt_id)` and read it with `getLedgerEntries`. No account, wallet or simulation is required to prove a receipt exists.
 
@@ -53,7 +61,8 @@ Verification is stateless: the public `/verify/[id]` page asks the server to der
 ```
 stellarproof/
 ├── app/                        # Next.js App Router
-│   ├── api/                    # AI summary, AI search, IPFS pinning routes
+│   ├── api/                    # AI summary/search, IPFS pinning
+│   │   └── stellar/            # Prepare/submit payments, account summary, receipt reads
 │   ├── verify/[id]/            # Public Soroban-powered receipt verification
 │   ├── layout.tsx
 │   └── page.tsx
@@ -68,9 +77,11 @@ stellarproof/
 │   ├── ReceiptDetail.tsx       # Receipt paper, verification, PDF export
 │   └── Settings.tsx
 ├── lib/
-│   ├── stellar.ts              # Network config, Soroban reads, atomic payment
+│   ├── stellar.ts              # Client-safe network config, assets, stroop math
+│   ├── stellar-server.ts       # SDK: Soroban assembly, submission, ledger reads
 │   ├── db.ts                   # Local-first storage + Supabase sync
 │   └── supabase.ts
+├── tests/                      # API route + helper tests (node:test via tsx)
 ├── contracts/stellarproof/     # Rust Soroban contract
 │   ├── Cargo.toml
 │   └── src/{lib.rs,test.rs}
@@ -105,6 +116,7 @@ cp .env.example .env
 | `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` | Deployed Soroban contract id (`C...`) |
 | `STELLAR_DEPLOYER_SECRET` | Secret key (`S...`) of a funded Testnet deployer, used only by `scripts/deploy.ts` |
 | `NEXT_PUBLIC_STELLAR_RPC_URL` | Soroban RPC endpoint (defaults to `https://soroban-testnet.stellar.org`) |
+| `NEXT_PUBLIC_USDC_ISSUER` | USDC issuer for the payment form (defaults to Circle's Testnet issuer) |
 | `GEMINI_API_KEY` | AI summaries and natural-language search (optional) |
 | `PINATA_JWT` | IPFS pinning (optional) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Receipt sync (optional) |
@@ -132,6 +144,12 @@ Run the contract unit tests with:
 
 ```bash
 pnpm contract:test
+```
+
+Run the API route and helper tests (Node's test runner through `tsx`, no extra dependencies):
+
+```bash
+pnpm test
 ```
 
 ### 4. Run locally
@@ -170,6 +188,9 @@ get_receipts_by_user(env, user) -> Vec<String>
 * **Contract not configured** — `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` is empty or malformed; receipts are then recorded locally only.
 * **RPC timeouts** — toggle **Demo Mode** in Settings to walk through the flow without network calls.
 * **Wallet shows the wrong network** — StellarProof always signs with the Testnet passphrase (`Test SDF Network ; September 2015`); switch the wallet itself to Testnet if it refuses to sign.
+* **`no <ASSET> trustline`** — issued assets must be opted into by the payer. Add the trustline (and a balance) in the wallet before paying.
+* **`<ASSET> Stellar Asset Contract is not deployed`** — deploy the asset's SAC with `stellar contract asset deploy --asset CODE:ISSUER` before using it in receipts.
+* **Stale balances or receipts** — the Stellar API routes are `force-dynamic` with `fetchCache = "force-no-store"`, so RPC and Horizon reads are never served from Next's data cache.
 * **Inspect anything onchain** — every tx hash and contract id links to [Stellar Expert](https://stellar.expert/explorer/testnet).
 
 ---
@@ -179,5 +200,6 @@ get_receipts_by_user(env, user) -> Vec<String>
 1. **Genuinely Stellar-native**: XLM settles through the native Stellar Asset Contract and the receipt lives in Soroban, with no bridges and no EVM.
 2. **One signature, one invocation**: the token transfer and the receipt write are atomic.
 3. **Durable verification**: `/verify/[id]` reads contract storage directly with `getLedgerEntries`, so proofs survive without an indexer.
-4. **Resilient demo path**: Demo Mode, local storage and template AI copy keep the product explorable with zero configuration.
-5. **Stripe-style PDF export**: vector invoices with Stellar audit trails, verification badge and QR code.
+4. **Any Stellar asset**: XLM and USDC work out of the box through their Stellar Asset Contracts, and any other asset can be receipted by its SAC address.
+5. **Resilient demo path**: Demo Mode, local storage and template AI copy keep the product explorable with zero configuration.
+6. **Stripe-style PDF export**: vector invoices with Stellar audit trails, verification badge and QR code.
