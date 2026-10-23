@@ -1,170 +1,224 @@
-# 🚀 StellarProof — Onchain Stellar Receipts & Verification
+<p align="center">
+  <strong>StellarProof</strong><br />
+  Every Stellar payment deserves a receipt.
+</p>
 
-> **Tagline**: *Every Stellar payment deserves a receipt.*
+<p align="center">
+  <a href="https://github.com/techAlhaji/stellar-proof/actions/workflows/ci.yml"><img src="https://github.com/techAlhaji/stellar-proof/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/techAlhaji/stellar-proof/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/network-Stellar%20Testnet-7D00FF" alt="Stellar Testnet" />
+  <img src="https://img.shields.io/badge/Next.js-14-black" alt="Next.js 14" />
+  <img src="https://img.shields.io/badge/Soroban%20SDK-29-orange" alt="Soroban SDK 29" />
+</p>
 
-StellarProof turns Stellar payments into professional, cryptographically verifiable receipts. Send XLM from any Stellar wallet, and in the same atomic transaction StellarProof:
+> **Status:** Testnet only. Not audited. Demo Mode is available and off by default; live mode fails closed if IPFS is not configured. The contract has no admin key, no upgrade path and no custody.
 
-1. Anchors the receipt metadata (amount, parties, purpose, IPFS CID) in a **Rust Soroban smart contract** on Stellar.
-2. Pins the full AI-generated invoice payload to **IPFS**.
-3. Stores the receipt locally (and in Supabase when configured) for natural-language search and tax-ready PDF export.
+StellarProof turns a Stellar payment into a verifiable business record. A payer sends XLM or any Stellar asset, and the same Soroban invocation moves the funds through the asset's Stellar Asset Contract and writes a receipt with the parties, amount, purpose and an IPFS metadata pointer. The payer can export a PDF; anyone can verify the record by reading Soroban storage directly, without an account, an indexer or trust in this app.
 
-Nothing in the payment, receipt or verification path touches an EVM chain — the entire product is built on Stellar and Soroban.
+Nothing in the payment, receipt or verification path touches an EVM chain. The product is built on Stellar and Soroban.
 
----
+## Contents
 
-## 🏗️ Tech Stack & Architecture
+- [How it works](#how-it-works)
+- [Architecture](#architecture)
+- [Multi-asset payments](#multi-asset-payments)
+- [Verification and its limits](#verification-and-its-limits)
+- [Repository layout](#repository-layout)
+- [Quick start](#quick-start)
+- [Environment](#environment)
+- [Contract API](#contract-api)
+- [HTTP API](#http-api)
+- [Testing and CI](#testing-and-ci)
+- [Deployment](#deployment)
+- [Known limitations](#known-limitations)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Maintainers](#maintainers)
+- [Contributors](#contributors)
+- [License](#license)
 
-* **Frontend**: Next.js 14 App Router, TypeScript, TailwindCSS v3, Framer Motion
-* **Wallet**: [Stellar Wallets Kit](https://stellarwalletskit.dev) (Freighter, xBull, Albedo, Lobstr, Hana, Rabet, WalletConnect, hardware wallets)
-* **Blockchain**: Stellar Testnet — XLM and issued-asset (USDC, …) payments through Stellar Asset Contracts + Soroban smart contracts
-* **SDK**: `@stellar/stellar-sdk` (Horizon + Soroban RPC)
-* **Smart Contract**: Rust + `soroban-sdk` 29
-* **Storage & Database**: Pinata IPFS Gateway, Supabase (with offline local failover)
-* **AI Service**: Google Gemini (1.5 Flash)
+## How it works
 
-```mermaid
-graph TD
-    User[Stellar Wallet] -->|1. Sign one invocation| FE[Next.js Frontend]
-    FE -->|2. Assemble + simulate| API[Next.js API routes]
-    API -->|3. create_receipt| Soroban[StellarProof Soroban Contract]
-    Soroban -->|4. SAC transfer| XLM[Native XLM Asset Contract]
-    FE -->|5. AI metadata| Gemini[Gemini AI Engine]
-    FE -->|6. Pin payload| Pinata[Pinata IPFS Gateway]
-    FE -->|7. Index receipt| Supabase[Supabase DB / Local Storage]
-    Verifier[Public Verifier] -->|getLedgerEntries| Soroban
-```
+A payment and its receipt are one Soroban invocation:
 
-### How the one-signature flow works
-
-A payment and its receipt are a **single Soroban invocation**:
-
-1. `POST /api/stellar/prepare-payment` loads the sender account, builds `create_receipt(sender, receipt_id, receiver, token, amount, …)` and simulates it with `server.prepareTransaction()` so the storage footprint, auth requirements and resource fee are attached.
+1. `POST /api/stellar/prepare-payment` loads the payer account, builds `create_receipt(sender, receipt_id, receiver, token, amount, symbol, cid, purpose)` and simulates it with `server.prepareTransaction()`. Simulation attaches the storage footprint, auth requirements and resource fee.
 2. The wallet signs the envelope once through Stellar Wallets Kit (`signTransaction`).
 3. `POST /api/stellar/submit-payment` submits it over Soroban RPC and polls until `SUCCESS`.
 
-Inside the contract, `token::Client::transfer()` moves the asset from the sender to the recipient through its Stellar Asset Contract, then the receipt metadata is written to persistent storage. Either both happen or the transaction reverts.
+Inside the contract, `token::Client::transfer()` moves the asset from the payer to the recipient through its Stellar Asset Contract. The receipt is then written to persistent storage. Either both happen or the transaction reverts.
 
-### Multi-asset payments
+## Architecture
 
-`create_receipt` takes a `token: Address`, so any Stellar Asset Contract works:
+```mermaid
+flowchart LR
+    U[Stellar wallet] -->|1. sign once| FE[Next.js frontend]
+    FE -->|2. assemble + simulate| API[Next.js API routes]
+    API -->|3. create_receipt| S[Soroban contract]
+    S -->|4. SAC transfer| T[Stellar Asset Contract]
+    FE -->|5. metadata| AI[Gemini, optional]
+    FE -->|6. pin JSON| IPFS[Pinata, optional]
+    FE -->|7. mirror| DB[Supabase, optional]
+    V[Public verifier] -->|getLedgerEntries| S
+```
 
-* **XLM** — the native asset contract, resolved from the network passphrase by the server.
-* **USDC** — `USDC:<issuer>` (Circle's Testnet issuer by default, override with `NEXT_PUBLIC_USDC_ISSUER`). The payer needs a USDC trustline and balance; both are checked before signing.
-* **Any other asset** — pass its SAC address as `assetSac` to `/api/stellar/prepare-payment`. The asset's Stellar Asset Contract must be deployed first (`stellar contract asset deploy --asset CODE:ISSUER`), otherwise the API returns a clear error.
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 14 App Router, React 18, TypeScript, Tailwind CSS |
+| Wallet | Stellar Wallets Kit (Freighter, xBull, Albedo, Lobstr, Hana, Rabet, hardware wallets) |
+| Network | Stellar Testnet: XLM and issued assets through Stellar Asset Contracts |
+| SDK | `@stellar/stellar-sdk` 17.x (Horizon + Soroban RPC) |
+| Contract | Rust, `soroban-sdk` 29.0.1, `wasm32v1-none` |
+| Metadata | Pinata IPFS (optional) |
+| Database | Supabase (optional), local-first fallback |
+| AI | Google Gemini 1.5 Flash (optional) |
 
-Verification is stateless: the public `/verify/[id]` page asks the server to derive the Soroban storage key for `DataKey::Receipt(receipt_id)` and read it with `getLedgerEntries`. No account, wallet or simulation is required to prove a receipt exists.
+## Multi-asset payments
 
----
+`create_receipt` takes `token: Address`, so any Stellar Asset Contract works:
 
-## 📁 Project Folder Structure
+- **XLM** — the native asset contract, resolved from the network passphrase.
+- **USDC** — `USDC:<issuer>`, Circle's Testnet issuer by default. The payer needs a trustline and balance; both are checked before signing.
+- **Any other asset** — pass its SAC address as `assetSac` to `/api/stellar/prepare-payment`. The asset's Stellar Asset Contract must be deployed first (`stellar contract asset deploy --asset CODE:ISSUER`), otherwise the API returns a clear error.
+
+## Verification and its limits
+
+`/verify/[id]` derives the Soroban storage key for `DataKey::Receipt(receipt_id)` and reads it with `getLedgerEntries`. No account, wallet or simulation is required to prove a record exists.
+
+What that proves:
+
+- A transaction wrote a receipt with this id.
+- The recorded sender, receiver, amount, symbol, purpose and CID are the values in contract storage.
+- The record has not been changed since the write.
+
+What it does **not** prove:
+
+- That the recipient agreed to the purpose or delivered anything. Only the payer signs.
+- That the asset is the one named by `token_symbol`. v0.1 stores the symbol the payer supplied, not the token address.
+- That the IPFS payload matches the payment. The CID is a pointer, not a hash checked onchain.
+- That the record will exist forever. Persistent entries are extended to about 90 days; v0.1 has no renewal function.
+
+Read [SECURITY.md](SECURITY.md) before making stronger claims.
+
+## Repository layout
 
 ```
-stellarproof/
-├── app/                        # Next.js App Router
-│   ├── api/                    # AI summary/search, IPFS pinning
-│   │   └── stellar/            # Prepare/submit payments, account summary, receipt reads
-│   ├── verify/[id]/            # Public Soroban-powered receipt verification
-│   ├── layout.tsx
-│   └── page.tsx
-├── components/
-│   ├── WalletProvider.tsx      # Stellar Wallets Kit context (connect/sign)
-│   ├── ConnectWalletButton.tsx
-│   ├── Landing.tsx
-│   ├── Sidebar.tsx
-│   ├── Overview.tsx
-│   ├── ReceiptsList.tsx
-│   ├── CreatePayment.tsx       # XLM payment + Soroban receipt anchoring
-│   ├── ReceiptDetail.tsx       # Receipt paper, verification, PDF export
-│   └── Settings.tsx
+stellar-proof/
+├── app/                         # Next.js App Router
+│   ├── api/ai/                  # AI metadata
+│   ├── api/ai-search/           # natural-language receipt search
+│   ├── api/ipfs/                # Pinata pinning
+│   ├── api/stellar/             # prepare, submit, account, receipt reads
+│   ├── docs/                    # in-app documentation page
+│   └── verify/[id]/             # public verification page
+├── components/                  # dashboard, payment, receipt, wallet UI
+├── contracts/stellarproof/
+│   ├── src/lib.rs               # one contract, one responsibility
+│   └── src/test.rs
+├── docs/
+│   └── demo_script.md
 ├── lib/
-│   ├── stellar.ts              # Client-safe network config, assets, stroop math
-│   ├── stellar-server.ts       # SDK: Soroban assembly, submission, ledger reads
-│   ├── db.ts                   # Local-first storage + Supabase sync
+│   ├── stellar.ts               # client-safe config, assets, stroop math
+│   ├── stellar-server.ts        # server-only SDK boundary
+│   ├── db.ts                    # local-first receipt cache
 │   └── supabase.ts
-├── tests/                      # API route + helper tests (node:test via tsx)
-├── contracts/stellarproof/     # Rust Soroban contract
-│   ├── Cargo.toml
-│   └── src/{lib.rs,test.rs}
-├── scripts/deploy.ts           # Installs WASM + creates the contract
-├── Cargo.toml                  # Cargo workspace + release profile
-└── .env.example
+├── scripts/
+│   ├── deploy.ts                # wasm install + contract creation
+│   └── create-issues.sh         # planned issue batch
+├── tests/                       # node:test suites
+├── .github/workflows/ci.yml
+├── Cargo.toml                   # workspace + release profile
+└── package.json
 ```
 
----
-
-## 🚀 Setup and Installation Guide
+## Quick start
 
 ### Prerequisites
 
-* Node.js `18.x` or `20.x`
-* Rust with the `wasm32v1-none` target and [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools/cli/install-cli) v25.2+ (for building/deploying the contract)
+- Node.js 20+
+- pnpm 12.3.4 (CI and local)
+- Rust stable with the `wasm32v1-none` target
+- Stellar CLI 28.1.0
 
-### 1. Install dependencies
+### 1. Install
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
-### 2. Configure environment variables
+The install allow-list for packages that run build scripts lives in `pnpm-workspace.yaml`. Without it, pnpm 12 fails with `ERR_PNPM_IGNORED_BUILDS`.
+
+### 2. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` | Deployed Soroban contract id (`C...`) |
-| `STELLAR_DEPLOYER_SECRET` | Secret key (`S...`) of a funded Testnet deployer, used only by `scripts/deploy.ts` |
-| `NEXT_PUBLIC_STELLAR_RPC_URL` | Soroban RPC endpoint (defaults to `https://soroban-testnet.stellar.org`) |
-| `NEXT_PUBLIC_USDC_ISSUER` | USDC issuer for the payment form (defaults to Circle's Testnet issuer) |
-| `GEMINI_API_KEY` | AI summaries and natural-language search (optional) |
-| `PINATA_JWT` | IPFS pinning (optional) |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Receipt sync (optional) |
+For a live Testnet flow:
 
-> [!NOTE]
-> Without the optional keys, StellarProof falls back to deterministic local templates for AI copy and simulated CIDs, so the whole flow can be reviewed instantly. Without a contract id, receipts are stored locally only — the UI states this explicitly.
+```dotenv
+NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=C...
+STELLAR_DEPLOYER_SECRET=S...
+```
 
-### 3. Build and deploy the Soroban contract
+Without a contract ID the app runs in local-only mode and says so. Without a Pinata key, live IPFS pinning fails with a clear 503 instead of anchoring a fake CID. Demo Mode does not call Pinata.
+
+### 3. Build and deploy the contract
 
 ```bash
-# Fund a testnet account first: https://friendbot.stellar.org
+# Fund a Testnet account first: https://friendbot.stellar.org
 stellar keys generate stellarproof-deployer --network testnet
 stellar keys fund stellarproof-deployer --network testnet
 
-# Build the Rust contract to WASM
-pnpm contract:build          # => target/wasm32v1-none/release/stellarproof_receipts.wasm
+rustup target add wasm32v1-none
+pnpm contract:build
 
-# Install the WASM and create the contract instance
 STELLAR_DEPLOYER_SECRET=$(stellar keys secret stellarproof-deployer) pnpm deploy:testnet
 ```
 
-The script prints the new contract id. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the dev server.
+The script prints the contract ID. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the dev server. There is no `initialize` call.
 
-Run the contract unit tests with:
-
-```bash
-pnpm contract:test
-```
-
-Run the API route and helper tests (Node's test runner through `tsx`, no extra dependencies):
-
-```bash
-pnpm test
-```
-
-### 4. Run locally
+### 4. Run
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), connect a Stellar wallet (Freighter, xBull, Albedo, …), make sure it is funded with testnet XLM, and send your first receipt-bearing payment.
+Open [http://localhost:3000](http://localhost:3000), connect a funded Testnet wallet, and send a payment.
 
----
+### 5. Test
 
-## 📜 Soroban Contract API
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
 
-`contracts/stellarproof/src/lib.rs`
+pnpm contract:test
+```
+
+## Environment
+
+| Variable | Scope | Required | Purpose |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` | client + server, build-time | Live mode | Deployed contract id (`C...`) |
+| `STELLAR_DEPLOYER_SECRET` | local/CI only | Deploy only | Secret key (`S...`) of a funded Testnet deployer |
+| `NEXT_PUBLIC_STELLAR_RPC_URL` | client + server, build-time | No | Soroban RPC; defaults to Testnet |
+| `NEXT_PUBLIC_STELLAR_HORIZON_URL` | client + server, build-time | No | Horizon; defaults to Testnet |
+| `NEXT_PUBLIC_USDC_ISSUER` | client + server, build-time | No | USDC issuer; defaults to Circle Testnet |
+| `STELLAR_RPC_URL` | deploy script | No | Override for the deploy RPC |
+| `STELLAR_NETWORK_PASSPHRASE` | deploy script | No | Override for the network passphrase |
+| `STELLARPROOF_WASM_PATH` | deploy script | No | Override for the wasm path |
+| `GEMINI_API_KEY` | server only | No | AI metadata and search |
+| `PINATA_JWT` | server only | Live IPFS | Pin receipt JSON |
+| `NEXT_PUBLIC_SUPABASE_URL` | client + server | No | Receipt mirror |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client | No | Receipt mirror; requires RLS |
+
+`NEXT_PUBLIC_*` values are inlined at build time. Changing one requires a new deployment.
+
+## Contract API
+
+`contracts/stellarproof/src/lib.rs` (v0.1, deployed as a single contract):
 
 ```rust
 create_receipt(env, sender, receipt_id, receiver, token: Address, amount: i128,
@@ -174,32 +228,88 @@ verify_receipt(env, receipt_id) -> Option<Receipt>
 get_receipts_by_user(env, user) -> Vec<String>
 ```
 
-* `create_receipt` transfers `amount` of `token` (native XLM SAC for XLM payments) from `sender` to `receiver`, then stores the receipt — funds move only if the receipt is written.
-* `sender.require_auth()` guarantees only the payer can spend their funds and write the receipt; Soroban satisfies it with the transaction envelope signature.
-* Receipts live in persistent storage (`DataKey::Receipt(id)`) with a 90-day TTL bump, indexed per user in `DataKey::UserReceipts(address)`.
-* Every registration emits a `receipt` contract event carrying the receipt id, parties, amount, token symbol and IPFS CID for indexers.
-* Because the key layout is deterministic (`["Receipt", id]`), any client can read a receipt with `getLedgerEntries` — that is what the public verification page does.
+- `create_receipt` transfers `amount` of `token` from `sender` to `receiver`, then stores the receipt. Funds move only if the receipt is written.
+- `sender.require_auth()` guarantees only the payer can spend their funds and write the receipt. The recipient does not sign.
+- Receipts live in persistent storage (`DataKey::Receipt(id)`) with a 90-day TTL bump, indexed per user in `DataKey::UserReceipts(address)`.
+- Every registration emits a `ReceiptAnchored` event with the receipt id, parties, amount, token symbol and IPFS CID for indexers.
+- The key layout is deterministic (`["Receipt", id]`), so any client can read a receipt with `getLedgerEntries`.
+- Errors: `EmptyReceiptId` (1), `EmptyIpfsHash` (2), `InvalidAmount` (3), `ReceiptAlreadyExists` (4), `ReceiptNotFound` (5).
 
----
+The v0.2 plan adds the token address, permissionless TTL renewal and paged history. It is not deployed yet.
 
-## 🔍 Observability & Troubleshooting
+## HTTP API
 
-* **`account not found` when sending** — the connected account has no testnet XLM. Fund it at [Friendbot](https://friendbot.stellar.org) and retry.
-* **Contract not configured** — `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` is empty or malformed; receipts are then recorded locally only.
-* **RPC timeouts** — toggle **Demo Mode** in Settings to walk through the flow without network calls.
-* **Wallet shows the wrong network** — StellarProof always signs with the Testnet passphrase (`Test SDF Network ; September 2015`); switch the wallet itself to Testnet if it refuses to sign.
-* **`no <ASSET> trustline`** — issued assets must be opted into by the payer. Add the trustline (and a balance) in the wallet before paying.
-* **`<ASSET> Stellar Asset Contract is not deployed`** — deploy the asset's SAC with `stellar contract asset deploy --asset CODE:ISSUER` before using it in receipts.
-* **Stale balances or receipts** — the Stellar API routes are `force-dynamic` with `fetchCache = "force-no-store"`, so RPC and Horizon reads are never served from Next's data cache.
-* **Inspect anything onchain** — every tx hash and contract id links to [Stellar Expert](https://stellar.expert/explorer/testnet).
+| Route | Method | Input | Success |
+| --- | --- | --- | --- |
+| `/api/stellar/prepare-payment` | POST | `sender, receiver, amount, receiptId, ipfsHash, purpose, assetCode?, assetSac?, tokenSymbol?` | `{ success, xdr, networkPassphrase, amountStroops }` |
+| `/api/stellar/submit-payment` | POST | `{ signedXdr }` | `{ success, txHash }` |
+| `/api/stellar/receipt` | GET | `?id=` | `{ success, receipt }` |
+| `/api/stellar/account` | GET | `?address=` | `{ success, account }` |
+| `/api/ipfs` | POST | `{ receiptId, metadata }` | `{ success, ipfsHash, gatewayUrl }` |
+| `/api/ai` | POST | payment fields | `{ success, aiTitle, aiSummary, aiExplanation, aiTags, category }` |
+| `/api/ai-search` | POST | `{ query, receipts }` | `{ success, matchingIds }` |
 
----
+Errors are `{ error: string }`. Stellar routes are `force-dynamic` with `fetchCache = "force-no-store"`.
 
-## 🏆 Highlights
+## Testing and CI
 
-1. **Genuinely Stellar-native**: XLM settles through the native Stellar Asset Contract and the receipt lives in Soroban, with no bridges and no EVM.
-2. **One signature, one invocation**: the token transfer and the receipt write are atomic.
-3. **Durable verification**: `/verify/[id]` reads contract storage directly with `getLedgerEntries`, so proofs survive without an indexer.
-4. **Any Stellar asset**: XLM and USDC work out of the box through their Stellar Asset Contracts, and any other asset can be receipted by its SAC address.
-5. **Resilient demo path**: Demo Mode, local storage and template AI copy keep the product explorable with zero configuration.
-6. **Stripe-style PDF export**: vector invoices with Stellar audit trails, verification badge and QR code.
+- `pnpm test` runs 20 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
+- `pnpm contract:test` runs the Rust unit tests.
+- CI has two jobs: `app` (install, typecheck, lint, test, build) and `contract` (format, clippy, test, wasm build). Both are required on `main` once branch protection is enabled.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the local commands and review rules.
+
+## Deployment
+
+The reference deployment is Vercel for the Next.js app and Stellar Testnet for the contract. Setup and environment details are in the [documentation](/docs#local-setup).
+
+Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app) (the URL predates the product name).
+
+Contract: not published in this repository state. Deploy it, record the ID and add the Stellar Expert link to the README.
+
+## Known limitations
+
+These are known and stated, not hidden:
+
+- **The receipt is payer-attested.** The recipient does not sign.
+- **v0.1 does not store the token address.** `token_symbol` is caller-supplied.
+- **Receipts expire after about 90 days.** There is no renewal function in v0.1.
+- **History is per browser.** The dashboard reads `localStorage`; `get_receipts_by_user` is unused.
+- **The PDF is not a tax document.** It has no tax fields, currency conversion or accounting integration.
+- **No audit.** The contract and app are unaudited.
+- **Testnet only.** Do not custody real funds.
+
+## Documentation
+
+- [StellarProof docs](/docs) — overview, payment flow, verification, contract and API reference, local setup.
+- [Demo script](docs/demo_script.md)
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
+
+1. Pick an issue with a clear acceptance test.
+2. Branch from `main`.
+3. Commit with Conventional Commits. Stage specific files, never `git add .`.
+4. Run `pnpm typecheck && pnpm lint && pnpm test && pnpm build`.
+5. Open a pull request. The `app` and `contract` checks must pass.
+
+Good first issues are labelled `good first issue`. Contract changes are labelled `contract` and need a specification update.
+
+## Security
+
+Do not open a public issue for a vulnerability. Use [GitHub private vulnerability reporting](https://github.com/techAlhaji/stellar-proof/security/advisories/new). See [SECURITY.md](SECURITY.md) for scope, response targets and the audit disclaimer.
+
+## Maintainers
+
+| Maintainer | Role | Contact |
+| --- | --- | --- |
+| [techAlhaji](https://github.com/techAlhaji) | Maintainer | [GitHub Issues](https://github.com/techAlhaji/stellar-proof/issues) |
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=techAlhaji/stellar-proof)](https://github.com/techAlhaji/stellar-proof/graphs/contributors)
+
+## License
+
+MIT. See [LICENSE](LICENSE).

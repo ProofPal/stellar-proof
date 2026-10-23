@@ -100,7 +100,13 @@ export function Landing({ onLaunchApp }: LandingProps) {
             StellarProof
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
+          <a
+            href="/docs"
+            className="px-1 py-2 text-xs font-medium text-zinc-300 transition hover:text-white sm:px-2 sm:text-sm"
+          >
+            Docs
+          </a>
           <ConnectWalletButton />
           {isConnected && (
             <button
@@ -224,19 +230,14 @@ export function Landing({ onLaunchApp }: LandingProps) {
           </div>
           <div className="flex gap-6">
             <a
-              href="https://github.com/techAlhaji/stellarproof"
+              href="https://github.com/techAlhaji/stellar-proof"
               target="_blank"
               rel="noreferrer"
               className="hover:text-white transition"
             >
               GitHub
             </a>
-            <a
-              href="https://github.com/techAlhaji/stellarproof#readme"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white transition"
-            >
+            <a href="/docs" className="hover:text-white transition">
               Docs
             </a>
             <a href="#" className="hover:text-white transition">

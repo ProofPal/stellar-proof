@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { jsPDF } from "jspdf";
-import { getLocalReceipts, ReceiptData } from "@/lib/db";
+import { ReceiptData } from "@/lib/db";
 import {
   STELLARPROOF_CONTRACT_ID,
   STELLAR_NETWORK,
@@ -31,7 +31,6 @@ export default function VerifyReceiptPage() {
   const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<"loading" | "verified" | "not-found" | "error">("loading");
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
-  const [verifiedOnchain, setVerifiedOnchain] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -85,21 +84,12 @@ export default function VerifyReceiptPage() {
               "This receipt is cryptographically secured in Soroban contract storage on the Stellar network.",
             aiTags: ipfsMeta.aiTags || ["Stellar", "Soroban", "Verified"],
           });
-          setVerifiedOnchain(true);
           setStatus("verified");
           return;
         }
 
-        // 3. Fall back to LocalStorage lookup (offline demo receipts)
-        const foundLocal = getLocalReceipts().find((r) => r.id === id);
-
-        if (foundLocal) {
-          setReceipt(foundLocal);
-          setVerifiedOnchain(false);
-          setStatus("verified");
-        } else {
-          setStatus("not-found");
-        }
+        // No onchain record. A local browser copy is not proof of payment.
+        setStatus("not-found");
       } catch (err) {
         console.error("Verification Page Error:", err);
         setStatus("error");
@@ -333,7 +323,8 @@ export default function VerifyReceiptPage() {
               </h3>
               <p className="text-zinc-400 text-xs leading-relaxed">
                 We could not locate receipt record <strong>#{id}</strong> in the
-                StellarProof Soroban contract or local database storage.
+                StellarProof Soroban contract. A local browser copy is not an
+                onchain proof.
               </p>
             </div>
             <button
@@ -378,9 +369,7 @@ export default function VerifyReceiptPage() {
                   Cryptographically Secure
                 </span>
                 <span className="text-[11px] opacity-80 leading-normal">
-                  {verifiedOnchain
-                    ? `Receipt ID read directly from the StellarProof contract on ${STELLAR_NETWORK.name}.`
-                    : "Receipt matches a locally cached record. Connect the contract onchain to verify permanently."}
+                  {`Receipt ID read directly from the StellarProof contract on ${STELLAR_NETWORK.name}.`}
                 </span>
               </div>
             </div>

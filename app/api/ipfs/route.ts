@@ -15,15 +15,14 @@ export async function POST(request: Request) {
     const pinataJwt = process.env.PINATA_JWT;
 
     if (!pinataJwt) {
-      // Fallback/Simulated CID for offline/unconfigured key scenario to ensure MVP never breaks
-      console.warn("PINATA_JWT is not configured. Using simulated IPFS upload.");
-      const mockCid = `QmYwAPzwh35SBaoafuiQQgNmoNd6STvtc6OcCcx5nBR5${Math.floor(Math.random() * 10)}`;
-      return NextResponse.json({
-        success: true,
-        ipfsHash: mockCid,
-        simulated: true,
-        gatewayUrl: `https://gateway.pinata.cloud/ipfs/${mockCid}`
-      });
+      // Live mode must never anchor a CID that does not resolve to pinned JSON.
+      return NextResponse.json(
+        {
+          error:
+            "IPFS pinning is not configured. Set PINATA_JWT before using live mode.",
+        },
+        { status: 503 }
+      );
     }
 
     const response = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {

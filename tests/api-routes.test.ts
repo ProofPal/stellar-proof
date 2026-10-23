@@ -154,6 +154,24 @@ test("receipt route requires an id", async () => {
   assert.match((await response.json()).error, /Missing receipt id/);
 });
 
+test("ipfs route fails closed when PINATA_JWT is missing", async () => {
+  delete process.env.PINATA_JWT;
+
+  const { POST } = await import("../app/api/ipfs/route");
+  const response = await POST(
+    jsonRequest("http://localhost/api/ipfs", {
+      receiptId: "rcpt-test-1",
+      metadata: { receiptId: "rcpt-test-1", amount: "2.5" },
+    })
+  );
+
+  assert.equal(response.status, 503);
+  assert.match(
+    (await response.json()).error,
+    /IPFS pinning is not configured/
+  );
+});
+
 test("account route requires an address", async () => {
   const { GET } = await import("../app/api/stellar/account/route");
   const response = await GET(

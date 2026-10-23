@@ -55,9 +55,8 @@ export function ReceiptDetail({
     setVerificationStatus("loading");
 
     if (mockMode) {
-      // Simulation delay for demo mode
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      setVerificationStatus("verified");
+      // Demo Mode has no onchain record to verify. Never show a verified state.
+      setVerificationStatus("not-found");
       return;
     }
 
@@ -290,8 +289,14 @@ export function ReceiptDetail({
                 StellarProof
               </span>
             </div>
-            <span className="px-2.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-full border border-purple-200">
-              Confirmed
+            <span
+              className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${
+                mockMode
+                  ? "bg-amber-100 text-amber-700 border-amber-200"
+                  : "bg-purple-100 text-purple-700 border-purple-200"
+              }`}
+            >
+              {mockMode ? "Simulated" : "Confirmed"}
             </span>
           </div>
 
@@ -506,7 +511,9 @@ export function ReceiptDetail({
                 ? "Demo verification passed: this simulated receipt matches its local record."
                 : `Verified cryptographically: receipt found on ${STELLAR_NETWORK.name} and its IPFS CID matches.`)}
             {verificationStatus === "not-found" &&
-              "Onchain verification failed: no matching receipt was found in the StellarProof contract."}
+              (mockMode
+                ? "Demo Mode does not produce an onchain proof. Turn Demo Mode off and send a live Testnet payment."
+                : "Onchain verification failed: no matching receipt was found in the StellarProof contract.")}
           </span>
         </div>
       )}

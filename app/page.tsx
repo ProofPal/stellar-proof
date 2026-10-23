@@ -25,7 +25,7 @@ export default function Home() {
   
   // Storage and Mode States
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
-  const [mockMode, setMockMode] = useState<boolean>(true); // Default to mock mode for seamless reviewer setup
+  const [mockMode, setMockMode] = useState<boolean>(false); // Live Testnet is the default; Demo Mode is opt-in
 
   useEffect(() => {
     setMounted(true);
@@ -86,6 +86,13 @@ export default function Home() {
         </header>
 
         <main className="flex-1 p-6 md:p-12 overflow-y-auto h-[calc(100vh-60px)] md:h-screen relative">
+          {mockMode && (
+            <div className="mb-6 rounded-xl border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-xs text-amber-300 leading-relaxed">
+              Demo Mode is on. Receipts are simulated: no wallet signature, no
+              Stellar transaction and no onchain proof. Turn it off in Settings
+              to use Testnet.
+            </div>
+          )}
           {selectedReceipt ? (
             /* Receipt detail overrides current view if a receipt is selected */
             <ReceiptDetail

@@ -2,6 +2,8 @@
 
 This script outlines the flow, visual transitions, and key talking points for the project's video demonstration.
 
+> **Record this in live mode.** Deploy the contract, set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and `PINATA_JWT`, turn Demo Mode off, and use a funded Testnet wallet. A recording made in Demo Mode shows simulated receipts and cannot be used in a submission.
+
 ---
 
 ## ⏱️ 0:00 - 0:45: The Problem & The Hook
@@ -30,9 +32,9 @@ This script outlines the flow, visual transitions, and key talking points for th
 
 * **Visual**: Show the step-by-step loader: AI Summary ➔ IPFS Pinned ➔ Settling on Stellar. Then the final white Stripe-style receipt with the QR code and a verified badge.
 * **Speaker**:
-  > "Behind the scenes, Gemini AI writes a professional title, a two-sentence summary, tags and a customer-friendly explanation.
+  > "Behind the scenes, Gemini, when configured, writes a professional title, a two-sentence summary, tags and a customer-friendly explanation.
   >
-  > That payload is pinned to IPFS. Then one signed Soroban invocation does both jobs atomically: our Rust contract moves the XLM through Stellar's native asset contract and stores the receipt id, both addresses, the amount and the IPFS CID.
+  > That payload is pinned to IPFS through Pinata. Then one signed Soroban invocation does both jobs atomically: our Rust contract moves the XLM through Stellar's native asset contract and stores the receipt id, both addresses, the amount and the IPFS CID.
   >
   > Here is the result: a clean receipt with the Stellar audit trail, an explorer link, a verification QR code and a PDF download."
 
@@ -54,6 +56,6 @@ This script outlines the flow, visual transitions, and key talking points for th
 * **Speaker**:
   > "StellarProof combines Stellar's fast, cheap settlement with Soroban's verifiable state and modern AI bookkeeping.
   >
-  > It's open source, it runs on testnet today, and it makes every Stellar payment a proper business record.
+  > It's open source, it runs on Testnet today, it is unaudited, and it makes every Stellar payment a proper business record.
   >
   > Thank you — let's make onchain payments clear."

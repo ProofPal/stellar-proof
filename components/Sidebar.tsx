@@ -2,6 +2,7 @@
 
 import React from "react";
 import {
+  BookOpen,
   LayoutDashboard,
   FileText,
   PlusCircle,
@@ -105,6 +106,13 @@ export function Sidebar({
                 </button>
               );
             })}
+            <a
+              href="/docs"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-zinc-400 hover:bg-white/5 hover:text-white border border-transparent transition duration-150"
+            >
+              <BookOpen className="w-5 h-5" />
+              Documentation
+            </a>
           </nav>
         </div>
 
