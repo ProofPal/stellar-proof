@@ -263,7 +263,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the local commands and review rules.
 
 The reference deployment is Vercel for the Next.js app and Stellar Testnet for the contract. Setup and environment details are in the [documentation](/docs#local-setup).
 
-Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app) (the URL predates the product name).
+Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app).
 
 Contract: not published in this repository state. Deploy it, record the ID and add the Stellar Expert link to the README.
 
@@ -282,7 +282,6 @@ These are known and stated, not hidden:
 ## Documentation
 
 - [StellarProof docs](/docs) — overview, payment flow, verification, contract and API reference, local setup.
-- [Demo script](docs/demo_script.md)
 
 ## Contributing
 
