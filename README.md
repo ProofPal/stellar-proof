@@ -154,19 +154,19 @@ The install allow-list for packages that run build scripts lives in `pnpm-worksp
 cp .env.example .env
 ```
 
-For a live Testnet flow:
+The v0.1 contract is already deployed on Testnet. For live writes, set the deployed ID:
 
 ```dotenv
-NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=C...
-STELLAR_DEPLOYER_SECRET=S...
+NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ
 ```
 
-Without a contract ID the app runs in local-only mode and says so. Without a Pinata key, live IPFS pinning fails with a clear 503 instead of anchoring a fake CID. Demo Mode does not call Pinata.
+Use a funded Testnet wallet and configure `PINATA_JWT` for receipt metadata pinning. Without a contract ID the app runs in local-only mode; without a Pinata key, live IPFS pinning fails with a clear 503. Demo Mode does not call Pinata.
 
-### 3. Build and deploy the contract
+### 3. Build and deploy a new contract version (optional)
+
+To redeploy after changing the contract, create and fund a Testnet deployer, then build and deploy:
 
 ```bash
-# Fund a Testnet account first: https://friendbot.stellar.org
 stellar keys generate stellarproof-deployer --network testnet
 stellar keys fund stellarproof-deployer --network testnet
 
@@ -176,7 +176,7 @@ pnpm contract:build
 STELLAR_DEPLOYER_SECRET=$(stellar keys secret stellarproof-deployer) pnpm deploy:testnet
 ```
 
-The script prints the contract ID. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the dev server. There is no `initialize` call.
+The script prints a new contract ID. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the app. There is no `initialize` call. Never use a mainnet secret for this Testnet deployment.
 
 ### 4. Run
 
@@ -213,6 +213,8 @@ pnpm contract:test
 | `PINATA_JWT` | server only | Live IPFS | Pin receipt JSON |
 | `NEXT_PUBLIC_SUPABASE_URL` | client + server | No | Receipt mirror |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client | No | Receipt mirror; requires RLS |
+
+The deployed v0.1 Testnet contract ID is `CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ`; [view it on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ).
 
 `NEXT_PUBLIC_*` values are inlined at build time. Changing one requires a new deployment.
 
@@ -255,7 +257,7 @@ Errors are `{ error: string }`. Stellar routes are `force-dynamic` with `fetchCa
 
 - `pnpm test` runs 20 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
 - `pnpm contract:test` runs the Rust unit tests.
-- CI has two jobs: `app` (install, typecheck, lint, test, build) and `contract` (format, clippy, test, wasm build). Both are required on `main` once branch protection is enabled.
+- CI has two jobs: `app` (install, typecheck, lint, test, build) and `contract` (format, clippy, test, wasm build with Stellar CLI 28.1.0). The contract job uses `stellar contract build` so Soroban SDK build metadata is set correctly. Both are required on `main` once branch protection is enabled.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local commands and review rules.
 
@@ -265,7 +267,7 @@ The reference deployment is Vercel for the Next.js app and Stellar Testnet for t
 
 Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app).
 
-Contract: not published in this repository state. Deploy it, record the ID and add the Stellar Expert link to the README.
+Soroban v0.1 contract deployed on Stellar Testnet: [`CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ`](https://stellar.expert/explorer/testnet/contract/CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ). Set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` to this ID when configuring a live app deployment. This is Testnet-only and unaudited.
 
 ## Known limitations
 

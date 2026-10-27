@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env, String,
-    Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env,
+    String, Vec,
 };
 
 /// Roughly one day of ledgers (5 second close time).
@@ -94,10 +94,10 @@ impl StellarProofReceipts {
     ) -> Result<Receipt, Error> {
         sender.require_auth();
 
-        if receipt_id.len() == 0 {
+        if receipt_id.is_empty() {
             return Err(Error::EmptyReceiptId);
         }
-        if ipfs_hash.len() == 0 {
+        if ipfs_hash.is_empty() {
             return Err(Error::EmptyIpfsHash);
         }
         if amount <= 0 {
