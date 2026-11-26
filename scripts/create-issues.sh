@@ -167,6 +167,178 @@ create_issue \
   "$BODY_CSV"
 
 # ---------------------------------------------------------------------------
+# History, honesty and contributor experience
+# ---------------------------------------------------------------------------
+
+BODY_HISTORY="$(cat <<'EOF'
+## Summary
+
+The dashboard calls `fetchReceiptsFromApi(address)` once with the default limit. The API returns a `nextStart` cursor, but `app/page.tsx` ignores it, so only the first page of an account's onchain history is ever shown.
+
+## Why it matters
+
+The contract exposes a paged index specifically so history can be read without unbounded invocations. Ignoring the cursor makes an account with more receipts look like it lost records, and the local cache only masks this on the device that created them.
+
+## Acceptance criteria
+
+- [ ] Track `nextStart` per connected address in the dashboard.
+- [ ] Add a "Load more" action that fetches the next page on demand, rather than looping unbounded.
+- [ ] Deduplicate by `receiptId` when merging pages, and keep local-only receipts.
+- [ ] Stop when `nextStart` is 0 and hide the action.
+- [ ] Keep already-loaded receipts visible if a later page fails.
+- [ ] Add a unit test for the merge and cursor helper.
+
+## Tech stack
+
+Next.js, React 18, TypeScript, Soroban paged index (`get_receipts_by_user_page`).
+EOF
+)"
+
+create_issue \
+  "feat(app): load beyond the first page of onchain history" \
+  "app,enhancement,drips-wave,complexity:medium" \
+  "$BODY_HISTORY"
+
+BODY_HISTORY_ERROR="$(cat <<'EOF'
+## Summary
+
+`readReceiptsByUser` returns `{ receipts: [], nextStart: 0 }` whenever simulation fails. That covers a contract deployed before the paged index existed, but also RPC outages and real contract errors. The route then returns `success: true`, so the dashboard cannot tell an empty history from an unavailable one.
+
+## Why it matters
+
+A user with receipts sees only the local cache and no explanation. Silent fallbacks also hide regressions that should be visible during review and operation.
+
+## Acceptance criteria
+
+- [ ] Distinguish a missing paged method on an older contract from a transport or simulation failure.
+- [ ] Return an explicit degraded/error signal for genuine failures, while keeping `success: true` with an empty list for a valid empty index.
+- [ ] Show a non-blocking notice with a retry action in the dashboard.
+- [ ] Do not clear the local cache when the read fails.
+- [ ] Add tests for the empty, older-contract and failed-simulation paths.
+
+## Tech stack
+
+Next.js route handlers, Stellar RPC simulation, TypeScript.
+EOF
+)"
+
+create_issue \
+  "fix(app): surface a failed history read instead of an empty list" \
+  "app,bug,drips-wave,complexity:medium" \
+  "$BODY_HISTORY_ERROR"
+
+BODY_SYMBOL="$(cat <<'EOF'
+## Summary
+
+`Receipt` stores the authoritative `token: Address`, but `token_symbol` is whatever the payer sent. The app displays the symbol as if it described the asset. Nothing ties "USDC" to the USDC Stellar Asset Contract.
+
+## Why it matters
+
+A payer can label a payment with any symbol. The address makes the record verifiable, but the visible label can still mislead a reader who does not check the contract address.
+
+## Acceptance criteria
+
+- [ ] Resolve the symbol from the token contract with a SEP-41 `symbol()` call at write time, or derive it from the SAC at read time in the server.
+- [ ] Reject or explicitly fall back for tokens that do not implement SEP-41 metadata; document the choice.
+- [ ] Keep the token address authoritative in storage, events and UI.
+- [ ] Update contract tests with a mock token that returns a symbol.
+- [ ] Update the app display, API docs and the "payer-reported" caveat.
+
+## Tech stack
+
+Rust, Soroban SDK, Stellar Asset Contract, TypeScript server helpers.
+EOF
+)"
+
+create_issue \
+  "feat(contract): resolve the token symbol from the SAC" \
+  "contract,enhancement,drips-wave,complexity:high" \
+  "$BODY_SYMBOL"
+
+BODY_RENEW_UI="$(cat <<'EOF'
+## Summary
+
+After a successful renewal, `handleRenew` sets the state to `done` and shows "Record extended", but it never updates `onchain.expiresAt`. The expiry line above the button keeps showing the old date until the page is reloaded.
+
+## Why it matters
+
+The UI contradicts itself at the moment the user needs confirmation, and a stale date invites a second, unnecessary renewal transaction.
+
+## Acceptance criteria
+
+- [ ] After submission succeeds, refetch the receipt (or use the new ledger) and update the displayed expiry.
+- [ ] Show the previous and new expiry dates when both are known.
+- [ ] Reset renewal state when the selected receipt changes.
+- [ ] Keep the button disabled only while the renewal is in flight or already done for this receipt.
+- [ ] Verify in the browser against Testnet and note that it was checked.
+
+## Tech stack
+
+React 18, TypeScript, `/api/stellar/receipt`, Stellar Testnet.
+EOF
+)"
+
+create_issue \
+  "fix(app): refresh the expiry after a successful renewal" \
+  "app,bug,good first issue,drips-wave,complexity:trivial" \
+  "$BODY_RENEW_UI"
+
+BODY_TEMPLATES="$(cat <<'EOF'
+## Summary
+
+`.github` contains only `workflows/ci.yml`. There are no issue or pull request templates, so Wave contributors have to infer the expected format from existing issues.
+
+## Why it matters
+
+Wave work is reviewed in public. A short template makes reports reproducible, keeps acceptance criteria explicit and reduces back-and-forth on every contribution.
+
+## Acceptance criteria
+
+- [ ] Add a bug report template asking for steps, expected vs actual, network, contract ID, browser and transaction hash.
+- [ ] Add a feature template with summary, why it matters, acceptance criteria and complexity.
+- [ ] Add a pull request template with linked issue, what changed, validation commands run and known limitations.
+- [ ] Add `config.yml` with links to the docs, security policy and discussions if enabled.
+- [ ] Keep every field optional enough that an external contributor can submit without repo-specific knowledge.
+
+## Tech stack
+
+GitHub issue forms, Markdown, repository configuration.
+EOF
+)"
+
+create_issue \
+  "chore: add issue and pull request templates" \
+  "docs,good first issue,drips-wave,complexity:trivial" \
+  "$BODY_TEMPLATES"
+
+BODY_TAX="$(cat <<'EOF'
+## Summary
+
+The landing page advertises PDFs "optimized for professional business invoicing and tax records", while `README.md` and the in-app docs state that the PDF is not a tax document. The two claims cannot both be true.
+
+## Why it matters
+
+This is a legal and trust claim, not a wording preference. It also undercuts the project's stated honesty about limitations.
+
+## Acceptance criteria
+
+- [ ] Replace the tax-record wording with "payment records" or equivalent.
+- [ ] Search the landing page, docs and README for similar unsupported claims (`tax`, `audit`, `guarantee`, `legally binding`) and align them.
+- [ ] Keep the existing disclaimer that the PDF has no tax fields or currency conversion.
+- [ ] No functional change.
+
+## Tech stack
+
+React, Tailwind CSS, Markdown.
+EOF
+)"
+
+create_issue \
+  "fix(app): remove the tax-record claim from the landing page" \
+  "app,docs,bug,good first issue,drips-wave,complexity:trivial" \
+  "$BODY_TAX"
+
+# ---------------------------------------------------------------------------
 # Contract tests and product decision
 # ---------------------------------------------------------------------------
 

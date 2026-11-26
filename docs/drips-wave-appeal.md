@@ -71,8 +71,10 @@ Checks that pass locally and in CI:
 
 The open issue batch is scoped for a single Wave cycle and uses the
 `drips-wave` and `complexity:*` labels. It covers receiver acknowledgement,
-pinning-verification of IPFS metadata, CSV export, documentation sync, the
-repository name decision and required CI checks. Each issue states its
+pinning-verification of IPFS metadata, CSV export, history paging and failure
+states, resolving the token symbol from the SAC, refreshing expiry after
+renewal, contributor templates, documentation sync, the repository name
+decision, required CI checks and copy honesty. Each issue states its
 acceptance criteria, the relevant files and the validation expected.
 
 The project remains Testnet-only and unaudited, and the README states that
