@@ -9,7 +9,53 @@ import { CreatePayment } from "@/components/CreatePayment";
 import { ReceiptDetail } from "@/components/ReceiptDetail";
 import { Settings } from "@/components/Settings";
 import { getLocalReceipts, ReceiptData } from "@/lib/db";
+import { fetchReceiptsFromApi, type OnchainReceipt } from "@/lib/stellar";
+import { useStellarWallet } from "@/components/WalletProvider";
 import { Menu } from "lucide-react";
+
+/** Keeps AI metadata and the tx hash from the local copy, onchain fields win. */
+function onchainToReceipt(
+  onchain: OnchainReceipt,
+  existing?: ReceiptData
+): ReceiptData {
+  return {
+    id: onchain.receiptId,
+    sender: onchain.sender,
+    receiver: onchain.receiver,
+    amount: onchain.amount,
+    tokenSymbol: onchain.tokenSymbol,
+    token: onchain.token || undefined,
+    ipfsHash: onchain.ipfsHash,
+    timestamp: onchain.timestamp,
+    txHash: existing?.txHash ?? "",
+    purpose: onchain.purpose,
+    category: existing?.category ?? "General",
+    notes: existing?.notes,
+    aiTitle: existing?.aiTitle ?? "Onchain Receipt",
+    aiSummary:
+      existing?.aiSummary ??
+      `Onchain payment of ${onchain.amount} ${onchain.tokenSymbol} anchored in the StellarProof Soroban contract.`,
+    aiExplanation:
+      existing?.aiExplanation ??
+      "This receipt was read back from the StellarProof Soroban contract index.",
+    aiTags: existing?.aiTags ?? ["Stellar", "Soroban", "Verified"],
+    expiresAt: onchain.expiresAt,
+    onchain: true,
+  };
+}
+
+/** Onchain records are authoritative; local-only receipts stay as an offline cache. */
+function mergeOnchainHistory(
+  history: OnchainReceipt[],
+  local: ReceiptData[]
+): ReceiptData[] {
+  const localById = new Map(local.map((receipt) => [receipt.id, receipt]));
+  const merged = history.map((receipt) =>
+    onchainToReceipt(receipt, localById.get(receipt.receiptId))
+  );
+  const seen = new Set(merged.map((receipt) => receipt.id));
+  return [...merged, ...local.filter((receipt) => !seen.has(receipt.id))];
+}
 
 export default function Home() {
   // Prevent Next.js hydration mismatches on mount
@@ -26,11 +72,28 @@ export default function Home() {
   // Storage and Mode States
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [mockMode, setMockMode] = useState<boolean>(false); // Live Testnet is the default; Demo Mode is opt-in
+  const { address } = useStellarWallet();
 
   useEffect(() => {
     setMounted(true);
     setReceipts(getLocalReceipts());
   }, []);
+
+  // Replace the browser-only view with the account's real history once a
+  // wallet is connected, so a new device shows the same receipts.
+  useEffect(() => {
+    if (!address || mockMode) return;
+
+    let cancelled = false;
+    fetchReceiptsFromApi(address).then((history) => {
+      if (cancelled || !history || history.receipts.length === 0) return;
+      setReceipts((current) => mergeOnchainHistory(history.receipts, current));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address, mockMode]);
 
   if (!mounted) {
     return (

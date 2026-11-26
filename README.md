@@ -46,7 +46,7 @@ A payment and its receipt are one Soroban invocation:
 2. The wallet signs the envelope once through Stellar Wallets Kit (`signTransaction`).
 3. `POST /api/stellar/submit-payment` submits it over Soroban RPC and polls until `SUCCESS`.
 
-Inside the contract, `token::Client::transfer()` moves the asset from the payer to the recipient through its Stellar Asset Contract. The receipt is then written to persistent storage. Either both happen or the transaction reverts.
+Inside the contract, `token::Client::transfer()` moves the asset from the payer to the recipient through its Stellar Asset Contract. The receipt, including the token contract address that actually moved, is then written to persistent storage. Either both happen or the transaction reverts.
 
 ## Architecture
 
@@ -89,14 +89,15 @@ What that proves:
 
 - A transaction wrote a receipt with this id.
 - The recorded sender, receiver, amount, symbol, purpose and CID are the values in contract storage.
+- The stored `token` address is the Stellar Asset Contract that moved the funds.
 - The record has not been changed since the write.
 
 What it does **not** prove:
 
 - That the recipient agreed to the purpose or delivered anything. Only the payer signs.
-- That the asset is the one named by `token_symbol`. v0.1 stores the symbol the payer supplied, not the token address.
+- That `token_symbol` names the asset. It is payer-reported display metadata; `token` is the authoritative address.
 - That the IPFS payload matches the payment. The CID is a pointer, not a hash checked onchain.
-- That the record will exist forever. Persistent entries are extended to about 90 days; v0.1 has no renewal function.
+- That the record will exist forever. Persistent entries are extended to about 90 days; anyone can call `bump_receipt` to renew them, but no one is obligated to.
 
 Read [SECURITY.md](SECURITY.md) before making stronger claims.
 
@@ -108,7 +109,7 @@ stellar-proof/
 │   ├── api/ai/                  # AI metadata
 │   ├── api/ai-search/           # natural-language receipt search
 │   ├── api/ipfs/                # Pinata pinning
-│   ├── api/stellar/             # prepare, submit, account, receipt reads
+│   ├── api/stellar/             # prepare, submit, account, receipt/history reads, renewal
 │   ├── docs/                    # in-app documentation page
 │   └── verify/[id]/             # public verification page
 ├── components/                  # dashboard, payment, receipt, wallet UI
@@ -220,7 +221,7 @@ The deployed v0.1 Testnet contract ID is `CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYR
 
 ## Contract API
 
-`contracts/stellarproof/src/lib.rs` (v0.1, deployed as a single contract):
+`contracts/stellarproof/src/lib.rs` (v0.2 source; the deployed Testnet instance is still v0.1):
 
 ```rust
 create_receipt(env, sender, receipt_id, receiver, token: Address, amount: i128,
@@ -228,16 +229,21 @@ create_receipt(env, sender, receipt_id, receiver, token: Address, amount: i128,
 get_receipt(env, receipt_id) -> Result<Receipt, Error>
 verify_receipt(env, receipt_id) -> Option<Receipt>
 get_receipts_by_user(env, user) -> Vec<String>
+get_receipts_by_user_page(env, user, start: u32, limit: u32) -> Vec<String>
+bump_receipt(env, receipt_id) -> Result<(), Error>
 ```
 
 - `create_receipt` transfers `amount` of `token` from `sender` to `receiver`, then stores the receipt. Funds move only if the receipt is written.
 - `sender.require_auth()` guarantees only the payer can spend their funds and write the receipt. The recipient does not sign.
+- `Receipt` contains `token: Address`, the Stellar Asset Contract that moved, plus the payer-reported `token_symbol` label.
 - Receipts live in persistent storage (`DataKey::Receipt(id)`) with a 90-day TTL bump, indexed per user in `DataKey::UserReceipts(address)`.
-- Every registration emits a `ReceiptAnchored` event with the receipt id, parties, amount, token symbol and IPFS CID for indexers.
+- `get_receipts_by_user_page` returns at most 50 ids per call for bounded reads.
+- `bump_receipt` is permissionless: any address can extend a receipt and its indexes to about 90 days. It emits `ReceiptRenewed`; clients read the resulting expiry from the entry's `liveUntilLedgerSeq`.
+- Every registration emits a `ReceiptAnchored` event with the receipt id, parties, token address, amount, token symbol and IPFS CID for indexers.
 - The key layout is deterministic (`["Receipt", id]`), so any client can read a receipt with `getLedgerEntries`.
 - Errors: `EmptyReceiptId` (1), `EmptyIpfsHash` (2), `InvalidAmount` (3), `ReceiptAlreadyExists` (4), `ReceiptNotFound` (5).
 
-The v0.2 plan adds the token address, permissionless TTL renewal and paged history. It is not deployed yet.
+v0.2 is source-complete and tested, but it deploys as a new contract ID. The Testnet ID below still points at v0.1 until a maintainer runs `pnpm deploy:testnet` with a funded deployer and updates `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID`; v0.1 receipts are not migrated automatically.
 
 ## HTTP API
 
@@ -246,6 +252,8 @@ The v0.2 plan adds the token address, permissionless TTL renewal and paged histo
 | `/api/stellar/prepare-payment` | POST | `sender, receiver, amount, receiptId, ipfsHash, purpose, assetCode?, assetSac?, tokenSymbol?` | `{ success, xdr, networkPassphrase, amountStroops }` |
 | `/api/stellar/submit-payment` | POST | `{ signedXdr }` | `{ success, txHash }` |
 | `/api/stellar/receipt` | GET | `?id=` | `{ success, receipt }` |
+| `/api/stellar/receipts` | GET | `?address=&start=&limit=` | `{ success, receipts, nextStart }` |
+| `/api/stellar/renew-receipt` | POST | `{ account, receiptId }` | `{ success, xdr, networkPassphrase }` |
 | `/api/stellar/account` | GET | `?address=` | `{ success, account }` |
 | `/api/ipfs` | POST | `{ receiptId, metadata }` | `{ success, ipfsHash, gatewayUrl }` |
 | `/api/ai` | POST | payment fields | `{ success, aiTitle, aiSummary, aiExplanation, aiTags, category }` |
@@ -255,7 +263,7 @@ Errors are `{ error: string }`. Stellar routes are `force-dynamic` with `fetchCa
 
 ## Testing and CI
 
-- `pnpm test` runs 20 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
+- `pnpm test` runs 26 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
 - `pnpm contract:test` runs the Rust unit tests.
 - CI has two jobs: `app` (install, typecheck, lint, test, build) and `contract` (format, clippy, test, wasm build with Stellar CLI 28.1.0). The contract job uses `stellar contract build` so Soroban SDK build metadata is set correctly. Both are required on `main` once branch protection is enabled.
 
@@ -274,9 +282,9 @@ Soroban v0.1 contract deployed on Stellar Testnet: [`CAXXWDCD6DTCLOCNILPUF625MFT
 These are known and stated, not hidden:
 
 - **The receipt is payer-attested.** The recipient does not sign.
-- **v0.1 does not store the token address.** `token_symbol` is caller-supplied.
-- **Receipts expire after about 90 days.** There is no renewal function in v0.1.
-- **History is per browser.** The dashboard reads `localStorage`; `get_receipts_by_user` is unused.
+- **`token_symbol` is payer-reported.** The stored `token` address is authoritative; v0.1 entries have an empty token field.
+- **Receipts expire after about 90 days.** `bump_receipt` can extend them permissionlessly, but nobody is obligated to.
+- **History is paged and read live.** The dashboard merges the onchain index with `localStorage`; each page costs one simulation plus one storage read per receipt.
 - **The PDF is not a tax document.** It has no tax fields, currency conversion or accounting integration.
 - **No audit.** The contract and app are unaudited.
 - **Testnet only.** Do not custody real funds.

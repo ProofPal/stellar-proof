@@ -69,6 +69,7 @@ export default function VerifyReceiptPage() {
             receiver: onchain.receiver,
             amount: onchain.amount,
             tokenSymbol: onchain.tokenSymbol,
+            token: onchain.token || undefined,
             ipfsHash: onchain.ipfsHash,
             timestamp: onchain.timestamp,
             txHash: typeof ipfsMeta.txHash === "string" ? ipfsMeta.txHash : "",
@@ -83,6 +84,8 @@ export default function VerifyReceiptPage() {
               ipfsMeta.aiExplanation ||
               "This receipt is cryptographically secured in Soroban contract storage on the Stellar network.",
             aiTags: ipfsMeta.aiTags || ["Stellar", "Soroban", "Verified"],
+            expiresAt: onchain.expiresAt,
+            onchain: true,
           });
           setStatus("verified");
           return;
@@ -549,6 +552,48 @@ export default function VerifyReceiptPage() {
                         </a>
                       )}
                     </div>
+
+                    {/* Stellar Asset Contract that moved the funds */}
+                    {receipt.token && (
+                      <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
+                        <div className="flex flex-col gap-0.5 max-w-[82%]">
+                          <span className="text-zinc-400 font-bold uppercase">
+                            Stellar Asset Contract
+                          </span>
+                          <span className="font-mono text-zinc-700 break-all font-semibold">
+                            {receipt.token}
+                          </span>
+                          <span className="text-zinc-400">
+                            Authoritative asset. {" "}
+                            {receipt.tokenSymbol} is the payer-reported symbol.
+                          </span>
+                        </div>
+                        <a
+                          href={explorerContractUrl(receipt.token)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 hover:bg-zinc-200 text-zinc-500 rounded-lg transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
+
+                    {receipt.expiresAt && (
+                      <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
+                        <div className="flex flex-col gap-0.5 max-w-[82%]">
+                          <span className="text-zinc-400 font-bold uppercase">
+                            Storage Expiry
+                          </span>
+                          <span className="text-zinc-700 font-semibold">
+                            ~{new Date(receipt.expiresAt).toLocaleDateString()}
+                          </span>
+                          <span className="text-zinc-400">
+                            Anyone can extend it with a permissionless renewal.
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* IPFS CID */}
                     <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">

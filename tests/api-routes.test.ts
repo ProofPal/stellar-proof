@@ -181,3 +181,51 @@ test("account route requires an address", async () => {
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /Missing account address/);
 });
+
+test("receipts route requires an account address", async () => {
+  const { GET } = await import("../app/api/stellar/receipts/route");
+  const response = await GET(
+    new Request("http://localhost/api/stellar/receipts")
+  );
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Missing account address/);
+});
+
+test("receipts route rejects an invalid address before any network call", async () => {
+  const { GET } = await import("../app/api/stellar/receipts/route");
+  const response = await GET(
+    new Request("http://localhost/api/stellar/receipts?address=0xdeadbeef")
+  );
+
+  assert.equal(response.status, 400);
+  assert.match(
+    (await response.json()).error,
+    /not a valid Stellar account address/
+  );
+});
+
+test("renew-receipt requires a receipt id", async () => {
+  const { POST } = await import("../app/api/stellar/renew-receipt/route");
+  const response = await POST(
+    jsonRequest("http://localhost/api/stellar/renew-receipt", {
+      account: SENDER,
+    })
+  );
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /receipt id is required/);
+});
+
+test("renew-receipt rejects an invalid account", async () => {
+  const { POST } = await import("../app/api/stellar/renew-receipt/route");
+  const response = await POST(
+    jsonRequest("http://localhost/api/stellar/renew-receipt", {
+      account: "0xdeadbeef",
+      receiptId: "rcpt-test-1",
+    })
+  );
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /not a valid Stellar account address/);
+});

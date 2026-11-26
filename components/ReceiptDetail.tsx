@@ -10,15 +10,20 @@ import {
   Check,
   ExternalLink,
   Sparkles,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { jsPDF } from "jspdf";
 import {
   STELLAR_NETWORK,
   explorerAccountUrl,
+  explorerContractUrl,
   explorerTxUrl,
   fetchReceiptFromApi,
+  type OnchainReceipt,
 } from "@/lib/stellar";
+import { useStellarWallet } from "@/components/WalletProvider";
 
 interface ReceiptDetailProps {
   receipt: ReceiptData;
@@ -36,6 +41,12 @@ export function ReceiptDetail({
   const [verificationStatus, setVerificationStatus] = useState<
     "unchecked" | "loading" | "verified" | "not-found"
   >("unchecked");
+  const [onchain, setOnchain] = useState<OnchainReceipt | null>(null);
+  const [renewState, setRenewState] = useState<
+    "idle" | "preparing" | "signing" | "submitting" | "done" | "error"
+  >("idle");
+  const [renewError, setRenewError] = useState<string | null>(null);
+  const { address, isConnected, signTransaction } = useStellarWallet();
 
   const handleCopyHash = () => {
     navigator.clipboard.writeText(receipt.txHash);
@@ -60,18 +71,70 @@ export function ReceiptDetail({
       return;
     }
 
-    const onchain = await fetchReceiptFromApi(receipt.id);
+    const record = await fetchReceiptFromApi(receipt.id);
+    setOnchain(record);
 
     if (
-      onchain &&
-      onchain.sender === receipt.sender &&
-      onchain.ipfsHash === receipt.ipfsHash
+      record &&
+      record.sender === receipt.sender &&
+      record.ipfsHash === receipt.ipfsHash
     ) {
       setVerificationStatus("verified");
     } else {
       setVerificationStatus("not-found");
     }
   };
+
+  /**
+   * Extends the receipt's persistent storage. `bump_receipt` needs no auth, so
+   * the connected account only signs and pays for its own transaction.
+   */
+  const handleRenew = async () => {
+    setRenewError(null);
+
+    if (!isConnected || !address) {
+      setRenewState("error");
+      setRenewError("Connect a funded Testnet wallet to extend this record.");
+      return;
+    }
+
+    try {
+      setRenewState("preparing");
+      const prepareResponse = await fetch("/api/stellar/renew-receipt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ account: address, receiptId: receipt.id }),
+      });
+      const prepared = await prepareResponse.json();
+      if (!prepareResponse.ok) {
+        throw new Error(prepared.error || "Unable to prepare the renewal.");
+      }
+
+      setRenewState("signing");
+      const signedXdr = await signTransaction(prepared.xdr);
+
+      setRenewState("submitting");
+      const submitResponse = await fetch("/api/stellar/submit-payment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signedXdr }),
+      });
+      const submitted = await submitResponse.json();
+      if (!submitResponse.ok) {
+        throw new Error(submitted.error || "Unable to submit the renewal.");
+      }
+
+      setRenewState("done");
+    } catch (err) {
+      setRenewState("error");
+      setRenewError(
+        err instanceof Error ? err.message : "The receipt renewal failed."
+      );
+    }
+  };
+
+  const tokenAddress = onchain?.token || receipt.token || "";
+  const renewBusy = ["preparing", "signing", "submitting"].includes(renewState);
 
   // PDF Vector Exporter using jsPDF
   const exportPDF = () => {
@@ -445,6 +508,32 @@ export function ReceiptDetail({
                 </div>
               </div>
 
+              {/* Stellar Asset Contract that moved the funds */}
+              {tokenAddress && (
+                <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
+                  <div className="flex flex-col gap-0.5 max-w-[85%]">
+                    <span className="text-zinc-400 font-bold uppercase">
+                      Stellar Asset Contract
+                    </span>
+                    <span className="font-mono text-zinc-700 font-semibold break-all">
+                      {tokenAddress}
+                    </span>
+                    <span className="text-zinc-400">
+                      Authoritative asset. {receipt.tokenSymbol} is the
+                      payer-reported display symbol.
+                    </span>
+                  </div>
+                  <a
+                    href={explorerContractUrl(tokenAddress)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 hover:bg-zinc-200 text-zinc-500 rounded-lg transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+
               {/* IPFS CID */}
               <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
                 <div className="flex flex-col gap-0.5 max-w-[85%]">
@@ -517,6 +606,46 @@ export function ReceiptDetail({
           </span>
         </div>
       )}
+
+      {/* Persistent storage renewal */}
+      <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h4 className="text-xs font-bold text-zinc-200">
+              Onchain record lifetime
+            </h4>
+            <p className="text-[10px] text-zinc-500 leading-normal max-w-md">
+              {onchain?.expiresAt
+                ? `Persistent storage expires around ${new Date(
+                    onchain.expiresAt
+                  ).toLocaleDateString()}.`
+                : "Persistent storage is extended to about 90 days when the receipt is written."}{" "}
+              Renewal is permissionless: any funded account can pay to keep this
+              proof alive.
+            </p>
+          </div>
+          <button
+            onClick={handleRenew}
+            disabled={renewBusy || renewState === "done"}
+            className="px-3 py-2 bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 text-zinc-200 font-bold rounded-xl text-[11px] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition"
+          >
+            {renewBusy ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            {renewState === "done" ? "Record extended" : "Extend record"}
+          </button>
+        </div>
+        {renewError && (
+          <p className="text-[10px] text-red-400 leading-normal">{renewError}</p>
+        )}
+        {renewState === "done" && (
+          <p className="text-[10px] text-emerald-400 leading-normal">
+            Persistent TTL extended by about 90 days from the latest ledger.
+          </p>
+        )}
+      </div>
 
       {/* Action Buttons Row */}
       <div className="grid grid-cols-3 gap-3">

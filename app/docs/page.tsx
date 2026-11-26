@@ -259,6 +259,7 @@ export default function DocsPage() {
                   <ul className="flex list-disc flex-col gap-1 pl-4 text-xs">
                     <li>A transaction wrote this receipt id.</li>
                     <li>The stored parties, amount, symbol and CID match.</li>
+                    <li>The stored Stellar Asset Contract is the asset that moved.</li>
                     <li>The record has not been edited.</li>
                   </ul>
                 </div>
@@ -268,9 +269,9 @@ export default function DocsPage() {
                   </p>
                   <ul className="flex list-disc flex-col gap-1 pl-4 text-xs">
                     <li>That the recipient agreed; only the payer signs.</li>
-                    <li>That the symbol names the asset that moved.</li>
+                    <li>That the symbol is a verified name for the asset; it is payer-reported, while <code className="text-zinc-300">token</code> is authoritative.</li>
                     <li>That the IPFS payload matches the payment.</li>
-                    <li>That the record lasts forever; the TTL is ~90 days.</li>
+                    <li>That the record lasts forever; the TTL is ~90 days unless someone renews it.</li>
                   </ul>
                 </div>
               </div>
@@ -298,10 +299,12 @@ export default function DocsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {[
-                      ["create_receipt", "sender", "Transfer the asset, write the receipt and index both parties."],
+                      ["create_receipt", "sender", "Transfer the asset, write the receipt (including the token address) and index both parties."],
                       ["get_receipt", "none", "Return a receipt or ReceiptNotFound."],
                       ["verify_receipt", "none", "Return Some(receipt) or None."],
                       ["get_receipts_by_user", "none", "Return the ids where an address was sender or receiver."],
+                      ["get_receipts_by_user_page", "none", "Return one bounded page (max 50) of a user's receipt ids."],
+                      ["bump_receipt", "none", "Permissionlessly extend a receipt and its indexes to ~90 days and emit ReceiptRenewed."],
                     ].map(([fn, auth, purpose]) => (
                       <tr key={fn}>
                         <td className="px-4 py-3 font-mono text-[11px] text-purple-300">{fn}</td>
@@ -324,11 +327,19 @@ export default function DocsPage() {
                 <code className="text-zinc-300">ReceiptNotFound</code> (5).
               </p>
               <Code>{`create_receipt(sender, receipt_id, receiver, token, amount,
-               token_symbol, ipfs_hash, purpose) -> Result<Receipt, Error>`}</Code>
+               token_symbol, ipfs_hash, purpose) -> Result<Receipt, Error>
+
+Receipt { receipt_id, sender, receiver, token, amount,
+          token_symbol, ipfs_hash, timestamp, purpose }
+
+get_receipts_by_user_page(user, start, limit) -> Vec<String>
+bump_receipt(receipt_id) -> Result<(), Error>`}</Code>
               <p>
-                v0.1 stores the payer-supplied <code className="text-zinc-300">token_symbol</code>,
-                not the token address. The next contract version adds the address,
-                permissionless TTL renewal and paged history.
+                v0.2 stores the token contract address alongside the receipt and
+                adds permissionless TTL renewal and paged history. The symbol stays
+                as a payer-reported display label. v0.2 is a new contract ID: v0.1
+                receipts remain readable in their old deployment but are not
+                migrated automatically.
               </p>
             </Section>
 
@@ -347,6 +358,8 @@ export default function DocsPage() {
                       ["/api/stellar/prepare-payment", "POST", "Unsigned XDR, passphrase and amount in stroops"],
                       ["/api/stellar/submit-payment", "POST", "Transaction hash after SUCCESS"],
                       ["/api/stellar/receipt", "GET", "Receipt from contract storage, or null"],
+                      ["/api/stellar/receipts", "GET", "One page of an account's history from the onchain index"],
+                      ["/api/stellar/renew-receipt", "POST", "Unsigned bump_receipt XDR"],
                       ["/api/stellar/account", "GET", "Balances, reserve and fee estimate"],
                       ["/api/ipfs", "POST", "Pinned CID; 503 when PINATA_JWT is missing"],
                       ["/api/ai", "POST", "Receipt title, summary, explanation and tags"],
@@ -404,9 +417,9 @@ STELLAR_DEPLOYER_SECRET=$(stellar keys secret stellarproof-deployer) pnpm deploy
             <Section id="limits" title="Limits">
               <ul className="flex list-disc flex-col gap-2 pl-5">
                 <li>The receipt is payer-attested. The recipient does not sign.</li>
-                <li>v0.1 stores a payer-supplied symbol, not the token address.</li>
-                <li>Persistent entries expire after about 90 days; v0.1 has no renewal.</li>
-                <li>Receipt history is per browser; there is no account indexer yet.</li>
+                <li>The symbol is payer-reported; verify the stored token address instead.</li>
+                <li>Persistent entries expire after about 90 days unless someone calls bump_receipt.</li>
+                <li>History pages are bounded to 50 ids and require one storage read per receipt.</li>
                 <li>The PDF is a payment record, not a tax document.</li>
                 <li>The contract and app are unaudited. Testnet only.</li>
               </ul>

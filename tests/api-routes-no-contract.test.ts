@@ -51,3 +51,29 @@ test("account route rejects an invalid address before any network call", async (
     /not a valid Stellar account address/
   );
 });
+
+test("receipts route reports an unconfigured contract", async () => {
+  const { GET } = await import("../app/api/stellar/receipts/route");
+  const response = await GET(
+    new Request(
+      `http://localhost/api/stellar/receipts?address=${SENDER}`
+    )
+  );
+
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /not configured/i);
+});
+
+test("renew-receipt reports an unconfigured contract", async () => {
+  const { POST } = await import("../app/api/stellar/renew-receipt/route");
+  const response = await POST(
+    new Request("http://localhost/api/stellar/renew-receipt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account: SENDER, receiptId: "rcpt-test-1" }),
+    })
+  );
+
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /not configured/i);
+});

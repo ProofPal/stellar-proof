@@ -11,6 +11,9 @@ const DAY_IN_LEDGERS: u32 = 17_280;
 const PERSISTENT_BUMP: u32 = 90 * DAY_IN_LEDGERS;
 /// Entries are extended when they are within ~30 days of expiring.
 const PERSISTENT_THRESHOLD: u32 = 60 * DAY_IN_LEDGERS;
+/// Upper bound for a single history page, so a read cannot exceed the host's
+/// per-invocation budget.
+const MAX_PAGE_SIZE: u32 = 50;
 
 /// Storage keys used by the contract.
 ///
@@ -33,7 +36,12 @@ pub struct Receipt {
     pub receipt_id: String,
     pub sender: Address,
     pub receiver: Address,
+    /// The Stellar Asset Contract that actually moved, recorded by the
+    /// contract rather than trusted from caller-supplied metadata.
+    pub token: Address,
     pub amount: i128,
+    /// Display symbol reported by the payer. The authoritative asset identity
+    /// is `token`.
     pub token_symbol: String,
     pub ipfs_hash: String,
     pub timestamp: u64,
@@ -60,9 +68,18 @@ pub struct ReceiptAnchored {
     #[topic]
     pub sender: Address,
     pub receiver: Address,
+    pub token: Address,
     pub amount: i128,
     pub token_symbol: String,
     pub ipfs_hash: String,
+}
+
+/// Emitted when anyone extends the lifetime of an existing receipt.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReceiptRenewed {
+    #[topic]
+    pub receipt_id: String,
 }
 
 #[contract]
@@ -75,6 +92,8 @@ impl StellarProofReceipts {
     ///
     /// `token` is any Stellar Asset Contract: the native XLM SAC for XLM
     /// payments, or an issued asset's SAC (e.g. USDC) for stablecoin payments.
+    /// The address is persisted with the receipt, so a verifier can prove which
+    /// asset moved instead of trusting the display symbol.
     ///
     /// Only the `sender` of the payment can register it, which is enforced by
     /// `require_auth()`. Soroban satisfies that authorization with the
@@ -117,6 +136,7 @@ impl StellarProofReceipts {
             receipt_id: receipt_id.clone(),
             sender: sender.clone(),
             receiver: receiver.clone(),
+            token: token.clone(),
             amount,
             token_symbol: token_symbol.clone(),
             ipfs_hash: ipfs_hash.clone(),
@@ -138,9 +158,10 @@ impl StellarProofReceipts {
             receipt_id: receipt_id.clone(),
             sender: sender.clone(),
             receiver: receiver.clone(),
+            token,
             amount,
-            token_symbol: token_symbol.clone(),
-            ipfs_hash: ipfs_hash.clone(),
+            token_symbol,
+            ipfs_hash,
         }
         .publish(&env);
 
@@ -163,11 +184,76 @@ impl StellarProofReceipts {
     }
 
     /// Returns every receipt id where `user` was the sender or the receiver.
+    ///
+    /// Prefer `get_receipts_by_user_page` for accounts with long histories: a
+    /// single call over an unbounded vector can exceed the read budget.
     pub fn get_receipts_by_user(env: Env, user: Address) -> Vec<String> {
         env.storage()
             .persistent()
             .get(&DataKey::UserReceipts(user))
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Returns one bounded page of the user's receipt ids.
+    ///
+    /// `start` is a zero-based offset and `limit` is clamped to 50. An offset
+    /// past the end returns an empty vector, so clients can page until empty.
+    pub fn get_receipts_by_user_page(
+        env: Env,
+        user: Address,
+        start: u32,
+        limit: u32,
+    ) -> Vec<String> {
+        let ids: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserReceipts(user))
+            .unwrap_or(Vec::new(&env));
+
+        let mut page = Vec::new(&env);
+        let end = limit.min(MAX_PAGE_SIZE);
+        let len = ids.len();
+        let mut index = start;
+
+        while index < len && page.len() < end {
+            if let Some(id) = ids.get(index) {
+                page.push_back(id);
+            }
+            index += 1;
+        }
+
+        page
+    }
+
+    /// Extends a receipt (and its owner indexes) to the full persistent TTL.
+    ///
+    /// Permissionless: keeping a public proof alive is a public good, so any
+    /// address can pay the fee to renew it. No authorization is required and
+    /// none is granted.
+    ///
+    /// Clients read the remaining lifetime from the entry's
+    /// `liveUntilLedgerSeq` with `getLedgerEntries`; the host does not expose a
+    /// production TTL getter to contract code.
+    pub fn bump_receipt(env: Env, receipt_id: String) -> Result<(), Error> {
+        let key = DataKey::Receipt(receipt_id.clone());
+        let receipt: Receipt = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::ReceiptNotFound)?;
+
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+
+        Self::bump_index(&env, receipt.sender.clone());
+        if receipt.receiver != receipt.sender {
+            Self::bump_index(&env, receipt.receiver.clone());
+        }
+
+        ReceiptRenewed { receipt_id }.publish(&env);
+
+        Ok(())
     }
 
     fn index_receipt(env: &Env, user: Address, receipt_id: String) {
@@ -182,6 +268,15 @@ impl StellarProofReceipts {
         env.storage()
             .persistent()
             .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+    }
+
+    fn bump_index(env: &Env, user: Address) {
+        let key = DataKey::UserReceipts(user);
+        if env.storage().persistent().has(&key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+        }
     }
 }
 

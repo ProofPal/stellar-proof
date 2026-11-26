@@ -13,6 +13,11 @@
 #
 set -euo pipefail
 
+# NOTE (v0.2): these items were implemented before the next Wave cycle and are
+# intentionally not re-filed: IPFS fail-closed, demo mode off by default, no
+# local-only verified state, token address in receipts, permissionless TTL
+# renewal, paged history, and contract auth/event/self-payment tests.
+
 REPO="${REPO:-techAlhaji/stellar-proof}"
 DRY_RUN="${DRY_RUN:-0}"
 
@@ -86,6 +91,10 @@ ensure_label "bug" "d73a4a" "Wrong or misleading behavior"
 ensure_label "enhancement" "a2eeef" "New capability"
 ensure_label "priority:high" "b60205" "Blocks a submission or a live demo"
 ensure_label "good first issue" "7057ff" "Scoped with a clear acceptance test"
+ensure_label "drips-wave" "6c4df6" "Tracked in a Drips Wave program"
+ensure_label "complexity:trivial" "bfe9f0" "Drips Wave - small, well-bounded task"
+ensure_label "complexity:medium" "d7f94b" "Drips Wave - moderate scope, some design"
+ensure_label "complexity:high" "ff8a3c" "Drips Wave - large or cross-cutting task"
 ensure_label "blocked" "fbca04" "Depends on a deployment or an external decision"
 ensure_label "decision" "d4c5f9" "Needs a product or naming decision"
 
@@ -96,184 +105,9 @@ echo
 # P0: proof integrity
 # ---------------------------------------------------------------------------
 
-BODY_IPFS="$(cat <<'EOF'
-## Summary
-
-`app/api/ipfs/route.ts` returns a simulated `Qm...` CID when `PINATA_JWT` is missing. In live mode, `components/CreatePayment.tsx` sends that value to `/api/stellar/prepare-payment`, so the fake CID is written onchain. The receipt then points to metadata that does not exist.
-
-## Why it matters
-
-The public verifier treats the CID as the metadata pointer. A fake CID makes the proof look complete while the metadata is missing. It also hides a configuration error from the operator.
-
-## Acceptance criteria
-
-- [ ] A live request with no `PINATA_JWT` returns `503` with an actionable message.
-- [ ] A simulated CID is never accepted by `/api/stellar/prepare-payment`.
-- [ ] Demo Mode still works without Pinata because it does not call this route.
-- [ ] A test covers the missing-key response and the no-simulated-CID invariant.
-- [ ] The README and `.env.example` state that live pinning requires a key.
-
-## Tech stack
-
-Next.js App Router, TypeScript, Pinata JSON pinning, `node:test`.
-EOF
-)"
-
-create_issue \
-  "fix(api): fail closed when IPFS pinning is not configured" \
-  "app,bug,priority:high" \
-  "$BODY_IPFS"
-
-BODY_DEMO="$(cat <<'EOF'
-## Summary
-
-`app/page.tsx` initialises `mockMode` to `true`, so the deployed app opens in a simulated state. A reviewer can create receipts, see a PDF and verify them without any Stellar transaction. The Settings page is the only place that explains the mode.
-
-## Why it matters
-
-A Wave reviewer should see the real product first. Simulated receipts that look real are a credibility risk and make the demo video ambiguous.
-
-## Acceptance criteria
-
-- [ ] `mockMode` starts `false`.
-- [ ] When Demo Mode is enabled, a persistent banner says no onchain payment is made.
-- [ ] The toggle is session-scoped and does not silently survive into a live flow.
-- [ ] The receipt detail shows a "simulated" label on demo receipts.
-- [ ] Tests or a component check cover the default state and the banner.
-
-## Tech stack
-
-Next.js 14, React 18, TypeScript, Tailwind CSS.
-EOF
-)"
-
-create_issue \
-  "fix(app): default demo mode off and label simulated receipts" \
-  "app,bug,priority:high" \
-  "$BODY_DEMO"
-
-BODY_LOCAL="$(cat <<'EOF'
-## Summary
-
-`app/verify/[id]/page.tsx` falls back to `localStorage` when no onchain receipt is found and still renders the green "Verified" header. `components/ReceiptDetail.tsx` shows a verified state in Demo Mode. A local record is not an onchain proof.
-
-## Why it matters
-
-The public verifier is the product's main claim. If it marks local data as verified, the claim is false and a reviewer cannot distinguish a real proof from a browser cache.
-
-## Acceptance criteria
-
-- [ ] "Verified" renders only when `getLedgerEntries` returned a receipt.
-- [ ] A local-only record renders as "Local preview - not onchain" with no verified badge.
-- [ ] Demo Mode verification is labelled as simulated.
-- [ ] A test covers the local-only case.
-- [ ] The README and the `/docs` page explain the difference.
-
-## Tech stack
-
-Next.js App Router, TypeScript, Soroban RPC `getLedgerEntries`.
-EOF
-)"
-
-create_issue \
-  "fix(app): remove local-only verified state from the public verifier" \
-  "app,bug,priority:high" \
-  "$BODY_LOCAL"
-
-# ---------------------------------------------------------------------------
-# P0: contract integrity
-# ---------------------------------------------------------------------------
-
-BODY_TOKEN="$(cat <<'EOF'
-## Summary
-
-`Receipt` stores `token_symbol: String`, supplied by the caller, but not `token: Address`. A caller can transfer a worthless token and write `"USDC"` as the symbol. A verifier cannot prove which asset moved.
-
-## Why it matters
-
-The receipt is supposed to be evidence of a payment. Without the asset contract address, the evidence is incomplete and the symbol is unverified metadata.
-
-## Acceptance criteria
-
-- [ ] `Receipt` includes `pub token: Address`.
-- [ ] `create_receipt` persists the `token` argument.
-- [ ] `get_receipt` and `get_ledger_entries` clients can read the address.
-- [ ] Tests assert the stored token address.
-- [ ] The migration note says v0.2 deploys as a new contract ID; v0.1 stays read-only.
-- [ ] The app displays the token address and labels the symbol as payer-reported.
-
-## Tech stack
-
-Rust, `soroban-sdk` 29.0.1, Soroban persistent storage, `wasm32v1-none`.
-EOF
-)"
-
-create_issue \
-  "feat(contract): store the token contract address in receipts" \
-  "contract,enhancement,priority:high" \
-  "$BODY_TOKEN"
-
-BODY_TTL="$(cat <<'EOF'
-## Summary
-
-Persistent receipt entries are extended to about 90 days at write time. There is no renewal function, and the public verifier uses `getLedgerEntries`, which cannot extend TTL. After expiry, a valid payment can fail verification.
-
-## Why it matters
-
-"Verify forever" is a core promise. A 90-day proof is not durable, and a reviewer will ask what happens after the TTL lapses.
-
-## Acceptance criteria
-
-- [ ] Add `bump_receipt(env, receipt_id) -> Result<(), Error>`.
-- [ ] No auth: any address can pay to keep a public proof alive.
-- [ ] Return `ReceiptNotFound` for an unknown id.
-- [ ] Extend the receipt and both user index TTLs.
-- [ ] A test advances the ledger, calls from an unrelated address and asserts the TTL increased.
-- [ ] The app shows the expiry date and offers a renewal action.
-
-## Tech stack
-
-Rust, `soroban-sdk` 29.0.1, persistent storage TTL.
-EOF
-)"
-
-create_issue \
-  "feat(contract): add permissionless receipt TTL renewal" \
-  "contract,enhancement,priority:high" \
-  "$BODY_TTL"
-
 # ---------------------------------------------------------------------------
 # P1: product integrity
 # ---------------------------------------------------------------------------
-
-BODY_HISTORY="$(cat <<'EOF'
-## Summary
-
-The dashboard lists receipts from `localStorage`. `get_receipts_by_user` exists but is not called. A new browser or device shows seed data, not the user's receipts.
-
-## Why it matters
-
-A receipt product that forgets a user's receipts on a new device is a demo, not a record system. The onchain data exists; the app does not read it.
-
-## Acceptance criteria
-
-- [ ] Add a server route that simulates `get_receipts_by_user_page(user, start, limit)`.
-- [ ] Read each returned receipt and return a typed list.
-- [ ] Use the route when a wallet is connected.
-- [ ] Keep `localStorage` as an offline cache, clearly labelled.
-- [ ] Handle an empty page and a contract with no index.
-- [ ] Add tests for the empty and populated cases.
-
-## Tech stack
-
-Next.js API routes, `@stellar/stellar-sdk`, Soroban simulation.
-EOF
-)"
-
-create_issue \
-  "feat(app): load account receipt history from the contract" \
-  "app,enhancement" \
-  "$BODY_HISTORY"
 
 BODY_META="$(cat <<'EOF'
 ## Summary
@@ -335,34 +169,6 @@ create_issue \
 # ---------------------------------------------------------------------------
 # Contract tests and product decision
 # ---------------------------------------------------------------------------
-
-BODY_TESTS="$(cat <<'EOF'
-## Summary
-
-The contract tests cover the happy path and the existing error codes. They do not cover a missing sender authorization, the event payload, or a self-payment index.
-
-## Why it matters
-
-Authorization is the security boundary. A regression there would let one account write a receipt for another account's payment. The event is the indexer contract.
-
-## Acceptance criteria
-
-- [ ] Add a test that calls `try_create_receipt` without `mock_all_auths` and asserts the auth failure.
-- [ ] Add a test that asserts one `ReceiptAnchored` event with the expected topics.
-- [ ] Add a self-payment test that asserts the index has one id.
-- [ ] Keep the existing tests passing.
-- [ ] Document any SDK limitation that prevents an assertion.
-
-## Tech stack
-
-Rust, `soroban-sdk` testutils, `Env::default()`.
-EOF
-)"
-
-create_issue \
-  "test(contract): cover auth failure, event payload and self-payment" \
-  "contract,enhancement,good first issue" \
-  "$BODY_TESTS"
 
 BODY_ACK="$(cat <<'EOF'
 ## Summary

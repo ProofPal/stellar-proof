@@ -98,13 +98,20 @@ export interface OnchainReceipt {
   receiptId: string;
   sender: string;
   receiver: string;
+  /** Stellar Asset Contract address that actually moved the funds. */
+  token: string;
   /** Amount in stroops, string encoded for safe transport. */
   amountStroops: string;
   amount: string;
+  /** Display symbol reported by the payer; `token` is authoritative. */
   tokenSymbol: string;
   ipfsHash: string;
   timestamp: number;
   purpose: string;
+  /** Remaining persistent lifetime in ledgers, when the network reported it. */
+  ttlLedgers?: number;
+  /** Approximate expiry derived from the persistent TTL. */
+  expiresAt?: string;
 }
 
 /**
@@ -163,6 +170,36 @@ export async function fetchReceiptFromApi(
     return data.receipt ?? null;
   } catch (error) {
     console.warn("Soroban receipt lookup failed:", error);
+    return null;
+  }
+}
+
+export interface OnchainHistory {
+  receipts: OnchainReceipt[];
+  /** Offset to request next; 0 means there is no further page. */
+  nextStart: number;
+}
+
+/**
+ * Reads the connected account's receipt history from the contract index.
+ * Returns `null` when the contract is not configured or the read fails, so the
+ * dashboard can fall back to its local cache without breaking.
+ */
+export async function fetchReceiptsFromApi(
+  address: string,
+  start = 0,
+  limit = 20
+): Promise<OnchainHistory | null> {
+  try {
+    const response = await fetch(
+      `/api/stellar/receipts?address=${encodeURIComponent(address)}&start=${start}&limit=${limit}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    return { receipts: data.receipts ?? [], nextStart: data.nextStart ?? 0 };
+  } catch (error) {
+    console.warn("Soroban history lookup failed:", error);
     return null;
   }
 }

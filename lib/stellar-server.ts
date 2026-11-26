@@ -394,6 +394,131 @@ export async function getAccountSummary(
 }
 
 /**
+ * Builds the permissionless `bump_receipt` invocation that extends a receipt's
+ * persistent storage. No authorization is required onchain, but the envelope
+ * still needs a funded source account and a signature.
+ */
+export async function buildReceiptRenewal(params: {
+  account: string;
+  receiptId: string;
+}): Promise<{ xdr: string; networkPassphrase: string }> {
+  const contractId = requireContractId();
+  const account = assertStellarAddress(params.account, "Account");
+
+  if (!params.receiptId?.trim()) {
+    throw new StellarApiError("A receipt id is required.");
+  }
+
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+
+  let source;
+  try {
+    source = await server.getAccount(account);
+  } catch {
+    throw new StellarApiError(
+      `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`
+    );
+  }
+
+  const contract = new Contract(contractId);
+  const transaction = new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  })
+    .addOperation(
+      contract.call(
+        "bump_receipt",
+        nativeToScVal(params.receiptId, { type: "string" })
+      )
+    )
+    .setTimeout(180)
+    .build();
+
+  let prepared;
+  try {
+    prepared = await server.prepareTransaction(transaction);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown error";
+    throw new StellarApiError(`Soroban simulation failed: ${detail}`);
+  }
+
+  return {
+    xdr: prepared.toXDR(),
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  };
+}
+
+/**
+ * Reads one page of an account's receipt history from the onchain index.
+ *
+ * The index is read by simulating `get_receipts_by_user_page`, then each id is
+ * read from persistent storage. Simulation is used because the contract method
+ * returns a value; `getLedgerEntries` cannot execute contract code.
+ */
+export async function readReceiptsByUser(
+  address: string,
+  start = 0,
+  limit = 20
+): Promise<{ receipts: OnchainReceipt[]; nextStart: number }> {
+  const contractId = requireContractId();
+  const account = assertStellarAddress(address, "Account");
+
+  const safeStart = Number.isFinite(start) && start > 0 ? Math.floor(start) : 0;
+  const safeLimit = Math.min(
+    Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 20,
+    50
+  );
+
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+
+  let source;
+  try {
+    source = await server.getAccount(account);
+  } catch {
+    throw new StellarApiError(
+      `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`,
+      404
+    );
+  }
+
+  const transaction = new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  })
+    .addOperation(
+      new Contract(contractId).call(
+        "get_receipts_by_user_page",
+        new Address(account).toScVal(),
+        nativeToScVal(safeStart, { type: "u32" }),
+        nativeToScVal(safeLimit, { type: "u32" })
+      )
+    )
+    .setTimeout(180)
+    .build();
+
+  const simulation = await server.simulateTransaction(transaction);
+
+  if (!rpc.Api.isSimulationSuccess(simulation) || !simulation.result) {
+    // A contract deployed before the paged index existed fails here. Treat it
+    // as an empty history rather than breaking the dashboard.
+    return { receipts: [], nextStart: 0 };
+  }
+
+  const ids = scValToNative(simulation.result.retval) as string[];
+  const receipts: OnchainReceipt[] = [];
+
+  for (const id of ids) {
+    const receipt = await readReceiptOnchain(id);
+    if (receipt) receipts.push(receipt);
+  }
+
+  return {
+    receipts,
+    nextStart: ids.length === safeLimit ? safeStart + ids.length : 0,
+  };
+}
+
+/**
  * Reads a receipt straight from Soroban contract storage.
  *
  * `getLedgerEntries` needs no funded account and no transaction simulation,
@@ -431,16 +556,32 @@ export async function readReceiptOnchain(
 
     const stroops = BigInt((value.amount as bigint | string) ?? 0);
 
+    // `liveUntilLedgerSeq` is the absolute ledger at which the entry expires.
+    let ttlLedgers: number | undefined;
+    let expiresAt: string | undefined;
+    if (entry.liveUntilLedgerSeq) {
+      try {
+        const latest = await server.getLatestLedger();
+        ttlLedgers = Math.max(0, entry.liveUntilLedgerSeq - latest.sequence);
+        expiresAt = new Date(Date.now() + ttlLedgers * 5_000).toISOString();
+      } catch {
+        // TTL display is best effort; the receipt itself is still valid data.
+      }
+    }
+
     return {
       receiptId: String(value.receipt_id ?? ""),
       sender: String(value.sender ?? ""),
       receiver: String(value.receiver ?? ""),
+      token: String(value.token ?? ""),
       amountStroops: stroops.toString(),
       amount: stroopsToXlm(stroops),
       tokenSymbol: String(value.token_symbol ?? STELLAR_NETWORK.nativeSymbol),
       ipfsHash: String(value.ipfs_hash ?? ""),
       timestamp: Number(value.timestamp ?? 0),
       purpose: String(value.purpose ?? ""),
+      ttlLedgers,
+      expiresAt,
     };
   } catch (error) {
     console.warn("Soroban receipt lookup failed:", error);

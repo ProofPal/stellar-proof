@@ -5,7 +5,10 @@ export interface ReceiptData {
   sender: string;
   receiver: string;
   amount: string;
+  /** Display symbol reported by the payer; `token` is the onchain asset. */
   tokenSymbol: string;
+  /** Stellar Asset Contract address stored onchain (v0.2 receipts only). */
+  token?: string;
   ipfsHash: string;
   timestamp: number; // UNIX timestamp
   txHash: string;
@@ -16,6 +19,10 @@ export interface ReceiptData {
   aiSummary: string;
   aiExplanation: string;
   aiTags: string[];
+  /** Approximate persistent-storage expiry reported by Soroban. */
+  expiresAt?: string;
+  /** True when the record was read back from the contract index. */
+  onchain?: boolean;
 }
 
 const LOCAL_STORAGE_KEY = "stellarproof_receipts";
