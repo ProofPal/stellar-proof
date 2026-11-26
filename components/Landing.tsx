@@ -45,7 +45,7 @@ export function Landing({ onLaunchApp }: LandingProps) {
       icon: <FileText className="w-6 h-6 text-pink-400" />,
       title: "PDF Export",
       description:
-        "Download beautiful, Stripe-style PDF receipts optimized for professional business invoicing and tax records.",
+        "Download beautiful, Stripe-style PDF receipts optimized for professional business invoicing and payment records.",
     },
     {
       icon: <HardDrive className="w-6 h-6 text-amber-400" />,
