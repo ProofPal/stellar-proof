@@ -155,10 +155,10 @@ The install allow-list for packages that run build scripts lives in `pnpm-worksp
 cp .env.example .env
 ```
 
-The v0.1 contract is already deployed on Testnet. For live writes, set the deployed ID:
+The v0.2 contract is already deployed on Testnet. For live writes, set the deployed ID:
 
 ```dotenv
-NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ
+NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5
 ```
 
 Use a funded Testnet wallet and configure `PINATA_JWT` for receipt metadata pinning. Without a contract ID the app runs in local-only mode; without a Pinata key, live IPFS pinning fails with a clear 503. Demo Mode does not call Pinata.
@@ -215,13 +215,13 @@ pnpm contract:test
 | `NEXT_PUBLIC_SUPABASE_URL` | client + server | No | Receipt mirror |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client | No | Receipt mirror; requires RLS |
 
-The deployed v0.1 Testnet contract ID is `CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ`; [view it on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ).
+The deployed v0.2 Testnet contract ID is `CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5`; [view it on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5).
 
 `NEXT_PUBLIC_*` values are inlined at build time. Changing one requires a new deployment.
 
 ## Contract API
 
-`contracts/stellarproof/src/lib.rs` (v0.2 source; the deployed Testnet instance is still v0.1):
+`contracts/stellarproof/src/lib.rs` (v0.2, deployed as a single contract):
 
 ```rust
 create_receipt(env, sender, receipt_id, receiver, token: Address, amount: i128,
@@ -243,7 +243,7 @@ bump_receipt(env, receipt_id) -> Result<(), Error>
 - The key layout is deterministic (`["Receipt", id]`), so any client can read a receipt with `getLedgerEntries`.
 - Errors: `EmptyReceiptId` (1), `EmptyIpfsHash` (2), `InvalidAmount` (3), `ReceiptAlreadyExists` (4), `ReceiptNotFound` (5).
 
-v0.2 is source-complete and tested, but it deploys as a new contract ID. The Testnet ID below still points at v0.1 until a maintainer runs `pnpm deploy:testnet` with a funded deployer and updates `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID`; v0.1 receipts are not migrated automatically.
+v0.2 is deployed on Testnet at the ID above. It is a new contract ID, so v0.1 receipts remain readable only in their old deployment and are not migrated automatically; new writes go through v0.2.
 
 ## HTTP API
 
@@ -275,7 +275,7 @@ The reference deployment is Vercel for the Next.js app and Stellar Testnet for t
 
 Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app).
 
-Soroban v0.1 contract deployed on Stellar Testnet: [`CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ`](https://stellar.expert/explorer/testnet/contract/CAXXWDCD6DTCLOCNILPUF625MFTOFK7RKZDCYRT74GBLVD63LF42AFWQ). Set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` to this ID when configuring a live app deployment. This is Testnet-only and unaudited.
+Soroban v0.2 contract deployed on Stellar Testnet: [`CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5`](https://stellar.expert/explorer/testnet/contract/CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5). Set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` to this ID when configuring a live app deployment. This is Testnet-only and unaudited.
 
 ## Known limitations
 

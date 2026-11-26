@@ -134,7 +134,7 @@ EOF
 
 create_issue \
   "feat(app): validate pinned metadata against the onchain receipt" \
-  "app,enhancement" \
+  "app,enhancement,drips-wave,complexity:medium" \
   "$BODY_META"
 
 BODY_CSV="$(cat <<'EOF'
@@ -163,7 +163,7 @@ EOF
 
 create_issue \
   "feat(app): add CSV export for accounting" \
-  "app,enhancement,good first issue" \
+  "app,enhancement,good first issue,drips-wave,complexity:trivial" \
   "$BODY_CSV"
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ EOF
 
 create_issue \
   "feat(contract): add receiver acknowledgement to receipts" \
-  "contract,enhancement,decision" \
+  "contract,enhancement,decision,drips-wave,complexity:high" \
   "$BODY_ACK"
 
 # ---------------------------------------------------------------------------
@@ -237,7 +237,7 @@ EOF
 
 create_issue \
   "decision: resolve the StellarProof name collision" \
-  "decision,priority:high,docs" \
+  "decision,priority:high,docs,drips-wave,complexity:high" \
   "$BODY_NAME"
 
 BODY_DOCS="$(cat <<'EOF'
@@ -266,7 +266,7 @@ EOF
 
 create_issue \
   "docs: keep the in-app documentation in sync" \
-  "docs,good first issue" \
+  "docs,good first issue,drips-wave,complexity:trivial" \
   "$BODY_DOCS"
 
 BODY_CI="$(cat <<'EOF'
@@ -295,7 +295,7 @@ EOF
 
 create_issue \
   "chore(ci): protect main with required app and contract checks" \
-  "app,contract,docs" \
+  "app,contract,docs,drips-wave,complexity:trivial" \
   "$BODY_CI"
 
 echo
