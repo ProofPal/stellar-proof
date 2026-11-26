@@ -85,6 +85,7 @@ export default function VerifyReceiptPage() {
               "This receipt is cryptographically secured in Soroban contract storage on the Stellar network.",
             aiTags: ipfsMeta.aiTags || ["Stellar", "Soroban", "Verified"],
             expiresAt: onchain.expiresAt,
+            acknowledgedAt: onchain.acknowledgedAt,
             onchain: true,
           });
           setStatus("verified");
@@ -564,8 +565,8 @@ export default function VerifyReceiptPage() {
                             {receipt.token}
                           </span>
                           <span className="text-zinc-400">
-                            Authoritative asset. {" "}
-                            {receipt.tokenSymbol} is the payer-reported symbol.
+                            Authoritative asset. {receipt.tokenSymbol} is the
+                            symbol read from the token contract.
                           </span>
                         </div>
                         <a
@@ -578,6 +579,37 @@ export default function VerifyReceiptPage() {
                         </a>
                       </div>
                     )}
+
+                    {/* Recipient acknowledgement */}
+                    <div className="flex flex-col gap-0.5 text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">
+                      <span className="text-zinc-400 font-bold uppercase">
+                        Recipient Acknowledgement
+                      </span>
+                      {receipt.acknowledgedAt ? (
+                        <>
+                          <span className="text-emerald-700 font-semibold">
+                            Acknowledged on{" "}
+                            {new Date(
+                              receipt.acknowledgedAt * 1000
+                            ).toLocaleString()}
+                          </span>
+                          <span className="text-zinc-400">
+                            The recipient signed this record onchain. It is not
+                            proof of delivery.
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-zinc-700 font-semibold">
+                            Not acknowledged
+                          </span>
+                          <span className="text-zinc-400">
+                            The receipt is payer-attested. Only the recipient
+                            can add an acknowledgement.
+                          </span>
+                        </>
+                      )}
+                    </div>
 
                     {receipt.expiresAt && (
                       <div className="flex justify-between items-center text-[10px] bg-zinc-50 border border-zinc-100 p-2.5 rounded-xl">

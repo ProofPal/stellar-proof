@@ -40,6 +40,7 @@ function onchainToReceipt(
       "This receipt was read back from the StellarProof Soroban contract index.",
     aiTags: existing?.aiTags ?? ["Stellar", "Soroban", "Verified"],
     expiresAt: onchain.expiresAt,
+    acknowledgedAt: onchain.acknowledgedAt,
     onchain: true,
   };
 }

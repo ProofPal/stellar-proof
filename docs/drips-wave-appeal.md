@@ -27,6 +27,15 @@ tested and deployed.
 - **Asset identity is onchain.** `Receipt` stores `token: Address`, the Stellar
   Asset Contract that actually moved, not just a display symbol. The
   `ReceiptAnchored` event carries the address as well.
+- **The symbol comes from the asset.** v0.3 reads SEP-41 `symbol()` from the
+  token contract at write time and keeps the payer label only as a fallback for
+  tokens without metadata. The native SAC's `native` symbol is shown as `XLM`
+  by the server; the stored token address stays authoritative.
+- **Recipients can acknowledge.** v0.3 adds `acknowledge_receipt`, which
+  requires the recorded receiver's signature, stores a separate acknowledgement
+  entry with its timestamp, and emits `ReceiptAcknowledged`. It adds no admin
+  role and does not alter the receipt itself; a receipt and an acknowledgement
+  remain separately verifiable.
 - **Permissionless renewal.** `bump_receipt(receipt_id)` extends a receipt and
   both user indexes to the full persistent TTL and emits `ReceiptRenewed`. Any
   address can pay to keep a public proof alive; no authorization or admin role
@@ -37,42 +46,43 @@ tested and deployed.
 - **The app uses the chain as the source of truth.** The dashboard loads the
   connected account's history from the contract index and merges it with the
   local cache. The verifier and receipt detail show the asset contract, the
-  payer-reported symbol, and the storage expiry, and the receipt detail offers
-  a signing flow for renewal.
-- **Two new API routes:** `GET /api/stellar/receipts` and
-  `POST /api/stellar/renew-receipt`; submission still goes through the existing
-  Soroban submit route.
+  contract-derived symbol, the acknowledgement state and the storage expiry, and
+  the receipt detail offers signing flows for acknowledgement and renewal.
+- **New API routes:** `GET /api/stellar/receipts`, `POST /api/stellar/renew-receipt`
+  and `POST /api/stellar/acknowledge-receipt`; submission still goes through the
+  existing Soroban submit route.
 
 Existing functions, error codes and the atomic transfer-then-write behavior are
 unchanged.
 
 ## Deployment and verification
 
-- Contract (v0.2, Testnet):
-  [`CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5`](https://stellar.expert/explorer/testnet/contract/CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5)
+- Contract (v0.3, Testnet):
+  [`CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO`](https://stellar.expert/explorer/testnet/contract/CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO)
 - WASM SHA-256:
-  `e5a3031802aed64baa95484d8d777664d5de49693ceede938ab7b204b7c1d009`
+  `cd3f3e64cf456235536cdbf97e76b97ec9ca0b6f1131a6bb5ba02b3e5ac78edc`
 - Exported functions: `create_receipt`, `get_receipt`, `verify_receipt`,
-  `get_receipts_by_user`, `get_receipts_by_user_page`, `bump_receipt`.
-- Live smoke test: `get_receipts_by_user_page` returned an empty page for a new
-  account, and `bump_receipt` on a missing id returned `ReceiptNotFound`
-  (contract error 5).
+  `get_receipts_by_user`, `get_receipts_by_user_page`, `acknowledge_receipt`,
+  `get_acknowledgement`, `bump_receipt`.
+- Live smoke test with a real 0.005 XLM payment: the receipt stored the native
+  SAC address and the SAC's own symbol, the recipient's acknowledgement
+  transaction succeeded and its timestamp was read back from storage, and the
+  receiver's paged history returned the new receipt id.
 
 Checks that pass locally and in CI:
 
-- `cargo test --workspace` — 15 contract tests.
+- `cargo test --workspace` — 23 contract tests.
 - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets`.
 - `stellar contract build` with Stellar CLI 28.1.0.
-- `pnpm typecheck`, `pnpm lint`, `pnpm test` (26 tests), `pnpm build`.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test` (29 tests), `pnpm build`.
 
 `change.md` in the repository describes every change in detail.
 
 ## Ready for contributions
 
 The open issue batch is scoped for a single Wave cycle and uses the
-`drips-wave` and `complexity:*` labels. It covers receiver acknowledgement,
-pinning-verification of IPFS metadata, CSV export, history paging and failure
-states, resolving the token symbol from the SAC, refreshing expiry after
+`drips-wave` and `complexity:*` labels. It covers pinning-verification of IPFS
+metadata, CSV export, history paging and failure states, refreshing expiry after
 renewal, contributor templates, documentation sync, the repository name
 decision, required CI checks and copy honesty. Each issue states its
 acceptance criteria, the relevant files and the validation expected.

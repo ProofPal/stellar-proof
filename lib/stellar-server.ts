@@ -518,12 +518,90 @@ export async function readReceiptsByUser(
   };
 }
 
+/** Builds a persistent contract-data key for a receipt or its acknowledgement. */
+function storageKey(
+  entry: "Receipt" | "Acknowledgement",
+  receiptId: string
+): xdr.LedgerKey {
+  return xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: xdr.ScAddress.scAddressTypeContract(
+        new xdr.ContractId(StrKey.decodeContract(STELLARPROOF_CONTRACT_ID))
+      ),
+      key: xdr.ScVal.scvVec([
+        xdr.ScVal.scvSymbol(entry),
+        nativeToScVal(receiptId, { type: "string" }),
+      ]),
+      durability: xdr.ContractDataDurability.persistent,
+    })
+  );
+}
+
+/**
+ * Builds and simulates the recipient's `acknowledge_receipt` invocation. Only
+ * the recorded receiver can sign it; the connected account is passed as that
+ * receiver, so a mismatched wallet fails during simulation.
+ */
+export async function buildReceiptAcknowledgement(params: {
+  account: string;
+  receiptId: string;
+}): Promise<{ xdr: string; networkPassphrase: string }> {
+  const contractId = requireContractId();
+  const account = assertStellarAddress(params.account, "Account");
+
+  if (!params.receiptId?.trim()) {
+    throw new StellarApiError("A receipt id is required.");
+  }
+
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+
+  let source;
+  try {
+    source = await server.getAccount(account);
+  } catch {
+    throw new StellarApiError(
+      `This account is not funded on ${STELLAR_NETWORK.name}. Fund it with Friendbot (${STELLAR_NETWORK.friendbotUrl}) and try again.`
+    );
+  }
+
+  const contract = new Contract(contractId);
+  const transaction = new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  })
+    .addOperation(
+      contract.call(
+        "acknowledge_receipt",
+        new Address(account).toScVal(),
+        nativeToScVal(params.receiptId, { type: "string" })
+      )
+    )
+    .setTimeout(180)
+    .build();
+
+  let prepared;
+  try {
+    prepared = await server.prepareTransaction(transaction);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown error";
+    throw new StellarApiError(
+      `This receipt cannot be acknowledged by the connected account. Only the recorded recipient can acknowledge it. (${detail})`
+    );
+  }
+
+  return {
+    xdr: prepared.toXDR(),
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  };
+}
+
 /**
  * Reads a receipt straight from Soroban contract storage.
  *
  * `getLedgerEntries` needs no funded account and no transaction simulation,
- * which keeps public verification stateless: the storage key of
- * `DataKey::Receipt(id)` is derived and requested directly from the network.
+ * which keeps public verification stateless: the storage keys of
+ * `DataKey::Receipt(id)` and `DataKey::Acknowledgement(id)` are derived and
+ * requested directly from the network.
  */
 export async function readReceiptOnchain(
   receiptId: string
@@ -532,21 +610,14 @@ export async function readReceiptOnchain(
 
   try {
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const key = xdr.LedgerKey.contractData(
-      new xdr.LedgerKeyContractData({
-        contract: xdr.ScAddress.scAddressTypeContract(
-          new xdr.ContractId(StrKey.decodeContract(STELLARPROOF_CONTRACT_ID))
-        ),
-        key: xdr.ScVal.scvVec([
-          xdr.ScVal.scvSymbol("Receipt"),
-          nativeToScVal(receiptId, { type: "string" }),
-        ]),
-        durability: xdr.ContractDataDurability.persistent,
-      })
-    );
+    const key = storageKey("Receipt", receiptId);
+    const ackKey = storageKey("Acknowledgement", receiptId);
 
-    const { entries } = await server.getLedgerEntries(key);
-    const entry = entries[0];
+    const { entries } = await server.getLedgerEntries(key, ackKey);
+    // Entries come back in request order but are matched by key to be safe.
+    const encodedKey = key.toXDR("base64");
+    const encodedAckKey = ackKey.toXDR("base64");
+    const entry = entries.find((entry) => entry.key.toXDR("base64") === encodedKey);
     if (!entry || entry.val.type !== "contractData") return null;
 
     const value = scValToNative(entry.val.contractData.val) as
@@ -569,19 +640,45 @@ export async function readReceiptOnchain(
       }
     }
 
+    // The acknowledgement is a separate persistent entry; its absence means the
+    // recipient has not signed one.
+    const ackEntry = entries.find(
+      (entry) => entry.key.toXDR("base64") === encodedAckKey
+    );
+    let acknowledgedAt: number | undefined;
+    if (ackEntry?.val.type === "contractData") {
+      const ackValue = scValToNative(ackEntry.val.contractData.val);
+      if (ackValue !== undefined && ackValue !== null) {
+        acknowledgedAt = Number(ackValue);
+      }
+    }
+
+    const token = String(value.token ?? "");
+    const storedSymbol = String(
+      value.token_symbol ?? STELLAR_NETWORK.nativeSymbol
+    );
+    // The native Stellar Asset Contract reports its SEP-41 symbol as
+    // "native"; show the network's usual "XLM" label instead.
+    const nativeSac = Asset.native().contractId(STELLAR_NETWORK.networkPassphrase);
+    const tokenSymbol =
+      token === nativeSac && storedSymbol === "native"
+        ? STELLAR_NETWORK.nativeSymbol
+        : storedSymbol;
+
     return {
       receiptId: String(value.receipt_id ?? ""),
       sender: String(value.sender ?? ""),
       receiver: String(value.receiver ?? ""),
-      token: String(value.token ?? ""),
+      token,
       amountStroops: stroops.toString(),
       amount: stroopsToXlm(stroops),
-      tokenSymbol: String(value.token_symbol ?? STELLAR_NETWORK.nativeSymbol),
+      tokenSymbol,
       ipfsHash: String(value.ipfs_hash ?? ""),
       timestamp: Number(value.timestamp ?? 0),
       purpose: String(value.purpose ?? ""),
       ttlLedgers,
       expiresAt,
+      acknowledgedAt,
     };
   } catch (error) {
     console.warn("Soroban receipt lookup failed:", error);

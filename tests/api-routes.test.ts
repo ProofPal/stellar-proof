@@ -217,6 +217,38 @@ test("renew-receipt requires a receipt id", async () => {
   assert.match((await response.json()).error, /receipt id is required/);
 });
 
+test("acknowledge-receipt requires a receipt id", async () => {
+  const { POST } = await import(
+    "../app/api/stellar/acknowledge-receipt/route"
+  );
+  const response = await POST(
+    jsonRequest("http://localhost/api/stellar/acknowledge-receipt", {
+      account: RECEIVER,
+    })
+  );
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /receipt id is required/);
+});
+
+test("acknowledge-receipt rejects an invalid account", async () => {
+  const { POST } = await import(
+    "../app/api/stellar/acknowledge-receipt/route"
+  );
+  const response = await POST(
+    jsonRequest("http://localhost/api/stellar/acknowledge-receipt", {
+      account: "0xdeadbeef",
+      receiptId: "rcpt-test-1",
+    })
+  );
+
+  assert.equal(response.status, 400);
+  assert.match(
+    (await response.json()).error,
+    /not a valid Stellar account address/
+  );
+});
+
 test("renew-receipt rejects an invalid account", async () => {
   const { POST } = await import("../app/api/stellar/renew-receipt/route");
   const response = await POST(

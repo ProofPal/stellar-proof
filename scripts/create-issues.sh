@@ -13,10 +13,11 @@
 #
 set -euo pipefail
 
-# NOTE (v0.2): these items were implemented before the next Wave cycle and are
+# NOTE (v0.3): these items were implemented before the next Wave cycle and are
 # intentionally not re-filed: IPFS fail-closed, demo mode off by default, no
-# local-only verified state, token address in receipts, permissionless TTL
-# renewal, paged history, and contract auth/event/self-payment tests.
+# local-only verified state, token address in receipts, onchain symbol
+# resolution, recipient acknowledgement, permissionless TTL renewal, paged
+# history, and contract auth/event/self-payment tests.
 
 REPO="${REPO:-techAlhaji/stellar-proof}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -227,34 +228,6 @@ create_issue \
   "app,bug,drips-wave,complexity:medium" \
   "$BODY_HISTORY_ERROR"
 
-BODY_SYMBOL="$(cat <<'EOF'
-## Summary
-
-`Receipt` stores the authoritative `token: Address`, but `token_symbol` is whatever the payer sent. The app displays the symbol as if it described the asset. Nothing ties "USDC" to the USDC Stellar Asset Contract.
-
-## Why it matters
-
-A payer can label a payment with any symbol. The address makes the record verifiable, but the visible label can still mislead a reader who does not check the contract address.
-
-## Acceptance criteria
-
-- [ ] Resolve the symbol from the token contract with a SEP-41 `symbol()` call at write time, or derive it from the SAC at read time in the server.
-- [ ] Reject or explicitly fall back for tokens that do not implement SEP-41 metadata; document the choice.
-- [ ] Keep the token address authoritative in storage, events and UI.
-- [ ] Update contract tests with a mock token that returns a symbol.
-- [ ] Update the app display, API docs and the "payer-reported" caveat.
-
-## Tech stack
-
-Rust, Soroban SDK, Stellar Asset Contract, TypeScript server helpers.
-EOF
-)"
-
-create_issue \
-  "feat(contract): resolve the token symbol from the SAC" \
-  "contract,enhancement,drips-wave,complexity:high" \
-  "$BODY_SYMBOL"
-
 BODY_RENEW_UI="$(cat <<'EOF'
 ## Summary
 
@@ -337,48 +310,6 @@ create_issue \
   "fix(app): remove the tax-record claim from the landing page" \
   "app,docs,bug,good first issue,drips-wave,complexity:trivial" \
   "$BODY_TAX"
-
-# ---------------------------------------------------------------------------
-# Contract tests and product decision
-# ---------------------------------------------------------------------------
-
-BODY_ACK="$(cat <<'EOF'
-## Summary
-
-The receipt is written by the payer only. The recipient never signs, so the record proves a transfer and a claim, not an agreement or delivery.
-
-## Why it matters
-
-This is the difference between a receipt generator and a settlement record. It is also the strongest differentiation identified in the review.
-
-## Decision needed
-
-Choose one before implementation:
-
-1. Keep payer-only receipts and say so in every user-facing description.
-2. Add `acknowledge_receipt(receiver, receipt_id)` with `receiver.require_auth()` and a separate acknowledgement key.
-3. Make acknowledgement mandatory, which changes the payment flow and leaves unacknowledged payments unresolved.
-
-## Acceptance criteria (option 2 only)
-
-- [ ] `receiver.require_auth()`.
-- [ ] `NotReceiver` for the wrong address; `AlreadyAcknowledged` on a second call.
-- [ ] Store `DataKey::Acknowledgement(receipt_id)` without changing `Receipt`.
-- [ ] Emit `ReceiptAcknowledged`.
-- [ ] Tests for success, wrong receiver, duplicate and missing auth.
-- [ ] UI shows anchored, acknowledged and unacknowledged states.
-- [ ] Docs explain what an unacknowledged receipt means.
-
-## Tech stack
-
-Rust, `soroban-sdk` 29.0.1, Soroban auth, Next.js.
-EOF
-)"
-
-create_issue \
-  "feat(contract): add receiver acknowledgement to receipts" \
-  "contract,enhancement,decision,drips-wave,complexity:high" \
-  "$BODY_ACK"
 
 # ---------------------------------------------------------------------------
 # Submission blockers

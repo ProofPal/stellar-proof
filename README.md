@@ -13,7 +13,7 @@
 
 > **Status:** Testnet only. Not audited. Demo Mode is available and off by default; live mode fails closed if IPFS is not configured. The contract has no admin key, no upgrade path and no custody.
 
-StellarProof turns a Stellar payment into a verifiable business record. A payer sends XLM or any Stellar asset, and the same Soroban invocation moves the funds through the asset's Stellar Asset Contract and writes a receipt with the parties, amount, purpose and an IPFS metadata pointer. The payer can export a PDF; anyone can verify the record by reading Soroban storage directly, without an account, an indexer or trust in this app.
+StellarProof turns a Stellar payment into a verifiable business record. A payer sends XLM or any Stellar asset, and the same Soroban invocation moves the funds through the asset's Stellar Asset Contract and writes a receipt with the parties, asset, amount, purpose and an IPFS metadata pointer. The record stores the token contract that moved and the SEP-41 symbol read from it; the recipient can separately sign an onchain acknowledgement. The payer can export a PDF, and anyone can verify the record by reading Soroban storage directly, without an account, an indexer or trust in this app.
 
 Nothing in the payment, receipt or verification path touches an EVM chain. The product is built on Stellar and Soroban.
 
@@ -47,6 +47,8 @@ A payment and its receipt are one Soroban invocation:
 3. `POST /api/stellar/submit-payment` submits it over Soroban RPC and polls until `SUCCESS`.
 
 Inside the contract, `token::Client::transfer()` moves the asset from the payer to the recipient through its Stellar Asset Contract. The receipt, including the token contract address that actually moved, is then written to persistent storage. Either both happen or the transaction reverts.
+
+The recipient can then call `acknowledge_receipt` with their own signature. That stores a separate acknowledgement entry and emits `ReceiptAcknowledged`; the receipt itself is not modified, so the two attestations stay distinguishable.
 
 ## Architecture
 
@@ -94,8 +96,8 @@ What that proves:
 
 What it does **not** prove:
 
-- That the recipient agreed to the purpose or delivered anything. Only the payer signs.
-- That `token_symbol` names the asset. It is payer-reported display metadata; `token` is the authoritative address.
+- That the recipient agreed to the purpose or delivered anything. Only the payer signs the receipt; an acknowledgement is opt-in and records only that the recipient signed the record.
+- That `token_symbol` names the asset. The contract reads SEP-41 `symbol()` from the token, but `token` is the authoritative address; tokens without metadata fall back to the payer label.
 - That the IPFS payload matches the payment. The CID is a pointer, not a hash checked onchain.
 - That the record will exist forever. Persistent entries are extended to about 90 days; anyone can call `bump_receipt` to renew them, but no one is obligated to.
 
@@ -155,10 +157,10 @@ The install allow-list for packages that run build scripts lives in `pnpm-worksp
 cp .env.example .env
 ```
 
-The v0.2 contract is already deployed on Testnet. For live writes, set the deployed ID:
+The v0.3 contract is already deployed on Testnet. For live writes, set the deployed ID:
 
 ```dotenv
-NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5
+NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID=CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO
 ```
 
 Use a funded Testnet wallet and configure `PINATA_JWT` for receipt metadata pinning. Without a contract ID the app runs in local-only mode; without a Pinata key, live IPFS pinning fails with a clear 503. Demo Mode does not call Pinata.
@@ -177,7 +179,7 @@ pnpm contract:build
 STELLAR_DEPLOYER_SECRET=$(stellar keys secret stellarproof-deployer) pnpm deploy:testnet
 ```
 
-The script prints a new contract ID. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the app. There is no `initialize` call. Never use a mainnet secret for this Testnet deployment.
+The script prints a new contract ID. Put it in `.env` as `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` and restart the app. There is no `initialize` call. Never use a mainnet secret for this Testnet deployment. Redeploying creates a new contract ID; existing receipts stay readable in their old deployment and are not migrated.
 
 ### 4. Run
 
@@ -215,13 +217,13 @@ pnpm contract:test
 | `NEXT_PUBLIC_SUPABASE_URL` | client + server | No | Receipt mirror |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client | No | Receipt mirror; requires RLS |
 
-The deployed v0.2 Testnet contract ID is `CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5`; [view it on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5).
+The deployed v0.3 Testnet contract ID is `CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO`; [view it on Stellar Expert](https://stellar.expert/explorer/testnet/contract/CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO).
 
 `NEXT_PUBLIC_*` values are inlined at build time. Changing one requires a new deployment.
 
 ## Contract API
 
-`contracts/stellarproof/src/lib.rs` (v0.2, deployed as a single contract):
+`contracts/stellarproof/src/lib.rs` (v0.3, deployed as a single contract):
 
 ```rust
 create_receipt(env, sender, receipt_id, receiver, token: Address, amount: i128,
@@ -230,20 +232,23 @@ get_receipt(env, receipt_id) -> Result<Receipt, Error>
 verify_receipt(env, receipt_id) -> Option<Receipt>
 get_receipts_by_user(env, user) -> Vec<String>
 get_receipts_by_user_page(env, user, start: u32, limit: u32) -> Vec<String>
+acknowledge_receipt(env, receiver, receipt_id) -> Result<u64, Error>
+get_acknowledgement(env, receipt_id) -> Option<u64>
 bump_receipt(env, receipt_id) -> Result<(), Error>
 ```
 
 - `create_receipt` transfers `amount` of `token` from `sender` to `receiver`, then stores the receipt. Funds move only if the receipt is written.
-- `sender.require_auth()` guarantees only the payer can spend their funds and write the receipt. The recipient does not sign.
-- `Receipt` contains `token: Address`, the Stellar Asset Contract that moved, plus the payer-reported `token_symbol` label.
+- `sender.require_auth()` guarantees only the payer can spend their funds and write the receipt. The recipient does not sign the receipt.
+- `Receipt` contains `token: Address`, the Stellar Asset Contract that moved, plus `token_symbol`, which is read from that contract with SEP-41 `symbol()` at write time. Tokens without SEP-41 metadata fall back to the payer-supplied label. The native SAC reports `native`; the server maps that to `XLM` for display.
+- `acknowledge_receipt` requires the recorded receiver's signature. It stores the timestamp under `DataKey::Acknowledgement(id)`, emits `ReceiptAcknowledged`, and returns `NotReceiver` or `AlreadyAcknowledged` on misuse.
 - Receipts live in persistent storage (`DataKey::Receipt(id)`) with a 90-day TTL bump, indexed per user in `DataKey::UserReceipts(address)`.
 - `get_receipts_by_user_page` returns at most 50 ids per call for bounded reads.
-- `bump_receipt` is permissionless: any address can extend a receipt and its indexes to about 90 days. It emits `ReceiptRenewed`; clients read the resulting expiry from the entry's `liveUntilLedgerSeq`.
+- `bump_receipt` is permissionless: any address can extend a receipt, its indexes and any acknowledgement to about 90 days. It emits `ReceiptRenewed`; clients read the resulting expiry from the entry's `liveUntilLedgerSeq`.
 - Every registration emits a `ReceiptAnchored` event with the receipt id, parties, token address, amount, token symbol and IPFS CID for indexers.
-- The key layout is deterministic (`["Receipt", id]`), so any client can read a receipt with `getLedgerEntries`.
-- Errors: `EmptyReceiptId` (1), `EmptyIpfsHash` (2), `InvalidAmount` (3), `ReceiptAlreadyExists` (4), `ReceiptNotFound` (5).
+- The key layout is deterministic (`["Receipt", id]`, `["UserReceipts", address]`, `["Acknowledgement", id]`), so any client can read a receipt and its acknowledgement with `getLedgerEntries`.
+- Errors: `EmptyReceiptId` (1), `EmptyIpfsHash` (2), `InvalidAmount` (3), `ReceiptAlreadyExists` (4), `ReceiptNotFound` (5), `NotReceiver` (6), `AlreadyAcknowledged` (7).
 
-v0.2 is deployed on Testnet at the ID above. It is a new contract ID, so v0.1 receipts remain readable only in their old deployment and are not migrated automatically; new writes go through v0.2.
+v0.3 is deployed on Testnet at the ID above. It is a new contract ID, so receipts written to v0.1 and v0.2 remain readable only in their old deployments and are not migrated automatically; new writes go through v0.3.
 
 ## HTTP API
 
@@ -253,6 +258,7 @@ v0.2 is deployed on Testnet at the ID above. It is a new contract ID, so v0.1 re
 | `/api/stellar/submit-payment` | POST | `{ signedXdr }` | `{ success, txHash }` |
 | `/api/stellar/receipt` | GET | `?id=` | `{ success, receipt }` |
 | `/api/stellar/receipts` | GET | `?address=&start=&limit=` | `{ success, receipts, nextStart }` |
+| `/api/stellar/acknowledge-receipt` | POST | `{ account, receiptId }` | `{ success, xdr, networkPassphrase }` |
 | `/api/stellar/renew-receipt` | POST | `{ account, receiptId }` | `{ success, xdr, networkPassphrase }` |
 | `/api/stellar/account` | GET | `?address=` | `{ success, account }` |
 | `/api/ipfs` | POST | `{ receiptId, metadata }` | `{ success, ipfsHash, gatewayUrl }` |
@@ -263,8 +269,8 @@ Errors are `{ error: string }`. Stellar routes are `force-dynamic` with `fetchCa
 
 ## Testing and CI
 
-- `pnpm test` runs 26 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
-- `pnpm contract:test` runs the Rust unit tests.
+- `pnpm test` runs 29 tests across helpers, API route validation and no-contract behavior using Node's test runner through `tsx`.
+- `pnpm contract:test` runs 23 Rust unit tests.
 - CI has two jobs: `app` (install, typecheck, lint, test, build) and `contract` (format, clippy, test, wasm build with Stellar CLI 28.1.0). The contract job uses `stellar contract build` so Soroban SDK build metadata is set correctly. Both are required on `main` once branch protection is enabled.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the local commands and review rules.
@@ -275,14 +281,14 @@ The reference deployment is Vercel for the Next.js app and Stellar Testnet for t
 
 Live app: [https://proofpal-ai.vercel.app](https://proofpal-ai.vercel.app).
 
-Soroban v0.2 contract deployed on Stellar Testnet: [`CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5`](https://stellar.expert/explorer/testnet/contract/CD7JEZD2N3T25ROZ2YTG3DYMO65NWWGXSD5ZSCRIZ36PUSWVVA34JAY5). Set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` to this ID when configuring a live app deployment. This is Testnet-only and unaudited.
+Soroban v0.3 contract deployed on Stellar Testnet: [`CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO`](https://stellar.expert/explorer/testnet/contract/CAKJZYIMOMWO72KMJCQ7VJR37IIZXZDXTJRAALLCKGX4U3YB5JGQZCZO) (WASM SHA-256 `cd3f3e64cf456235536cdbf97e76b97ec9ca0b6f1131a6bb5ba02b3e5ac78edc`). Set `NEXT_PUBLIC_STELLARPROOF_CONTRACT_ID` to this ID when configuring a live app deployment. This is Testnet-only and unaudited.
 
 ## Known limitations
 
 These are known and stated, not hidden:
 
-- **The receipt is payer-attested.** The recipient does not sign.
-- **`token_symbol` is payer-reported.** The stored `token` address is authoritative; v0.1 entries have an empty token field.
+- **The receipt is payer-attested by default.** The recipient can sign a separate acknowledgement, but it is opt-in and not proof of delivery.
+- **`token` is authoritative.** `token_symbol` is read from the token contract (or the payer label when the token has no SEP-41 metadata); v0.1 entries have an empty token field.
 - **Receipts expire after about 90 days.** `bump_receipt` can extend them permissionlessly, but nobody is obligated to.
 - **History is paged and read live.** The dashboard merges the onchain index with `localStorage`; each page costs one simulation plus one storage read per receipt.
 - **The PDF is not a tax document.** It has no tax fields, currency conversion or accounting integration.

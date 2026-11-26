@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env,
-    String, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, token,
+    Address, Env, String, Vec,
 };
 
 /// Roughly one day of ledgers (5 second close time).
@@ -27,6 +27,8 @@ pub enum DataKey {
     Receipt(String),
     /// `["UserReceipts", address] -> Vec<String>`
     UserReceipts(Address),
+    /// `["Acknowledgement", receipt_id] -> u64` (acknowledgement timestamp)
+    Acknowledgement(String),
 }
 
 /// A single payment receipt anchored on the Stellar network.
@@ -40,8 +42,9 @@ pub struct Receipt {
     /// contract rather than trusted from caller-supplied metadata.
     pub token: Address,
     pub amount: i128,
-    /// Display symbol reported by the payer. The authoritative asset identity
-    /// is `token`.
+    /// Symbol read from the token contract at write time (SEP-41 `symbol()`),
+    /// falling back to the payer-reported label only when the call fails.
+    /// The authoritative asset identity is still `token`.
     pub token_symbol: String,
     pub ipfs_hash: String,
     pub timestamp: u64,
@@ -57,6 +60,8 @@ pub enum Error {
     InvalidAmount = 3,
     ReceiptAlreadyExists = 4,
     ReceiptNotFound = 5,
+    NotReceiver = 6,
+    AlreadyAcknowledged = 7,
 }
 
 /// Emitted every time a receipt is anchored, so indexers can follow new proofs.
@@ -82,6 +87,16 @@ pub struct ReceiptRenewed {
     pub receipt_id: String,
 }
 
+/// Emitted when the recipient signs an acknowledgement of a receipt.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReceiptAcknowledged {
+    #[topic]
+    pub receipt_id: String,
+    #[topic]
+    pub receiver: Address,
+}
+
 #[contract]
 pub struct StellarProofReceipts;
 
@@ -93,7 +108,9 @@ impl StellarProofReceipts {
     /// `token` is any Stellar Asset Contract: the native XLM SAC for XLM
     /// payments, or an issued asset's SAC (e.g. USDC) for stablecoin payments.
     /// The address is persisted with the receipt, so a verifier can prove which
-    /// asset moved instead of trusting the display symbol.
+    /// asset moved instead of trusting the display symbol. `token_symbol` is
+    /// only a fallback: the stored symbol is read from the token contract with
+    /// SEP-41 `symbol()` when the token supports it.
     ///
     /// Only the `sender` of the payment can register it, which is enforced by
     /// `require_auth()`. Soroban satisfies that authorization with the
@@ -131,6 +148,10 @@ impl StellarProofReceipts {
         // The payment settles inside the same invocation that records the
         // receipt, so either both happen or the whole transaction reverts.
         token::Client::new(&env, &token).transfer(&sender, &receiver, &amount);
+
+        // Read the symbol from the asset itself instead of trusting the payer
+        // label. A token without SEP-41 metadata falls back to that label.
+        let token_symbol = Self::resolve_symbol(&env, &token, token_symbol);
 
         let receipt = Receipt {
             receipt_id: receipt_id.clone(),
@@ -225,6 +246,59 @@ impl StellarProofReceipts {
         page
     }
 
+    /// Records the recipient's acknowledgement of a receipt.
+    ///
+    /// Only the recorded receiver can acknowledge, enforced by
+    /// `require_auth()`. The receipt itself is not modified: the
+    /// acknowledgement is a separate persistent entry, so a verifier can tell
+    /// a payer-attested receipt from one the recipient also confirmed.
+    ///
+    /// Returns the ledger timestamp of the acknowledgement.
+    pub fn acknowledge_receipt(
+        env: Env,
+        receiver: Address,
+        receipt_id: String,
+    ) -> Result<u64, Error> {
+        receiver.require_auth();
+
+        let receipt: Receipt = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Receipt(receipt_id.clone()))
+            .ok_or(Error::ReceiptNotFound)?;
+
+        if receipt.receiver != receiver {
+            return Err(Error::NotReceiver);
+        }
+
+        let key = DataKey::Acknowledgement(receipt_id.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(Error::AlreadyAcknowledged);
+        }
+
+        let timestamp = env.ledger().timestamp();
+        env.storage().persistent().set(&key, &timestamp);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+
+        ReceiptAcknowledged {
+            receipt_id,
+            receiver,
+        }
+        .publish(&env);
+
+        Ok(timestamp)
+    }
+
+    /// Returns the acknowledgement timestamp for a receipt, if the recipient
+    /// signed one.
+    pub fn get_acknowledgement(env: Env, receipt_id: String) -> Option<u64> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Acknowledgement(receipt_id))
+    }
+
     /// Extends a receipt (and its owner indexes) to the full persistent TTL.
     ///
     /// Permissionless: keeping a public proof alive is a public good, so any
@@ -251,9 +325,33 @@ impl StellarProofReceipts {
             Self::bump_index(&env, receipt.receiver.clone());
         }
 
+        // An acknowledgement should expire with the receipt it belongs to.
+        let ack_key = DataKey::Acknowledgement(receipt_id.clone());
+        if env.storage().persistent().has(&ack_key) {
+            env.storage()
+                .persistent()
+                .extend_ttl(&ack_key, PERSISTENT_THRESHOLD, PERSISTENT_BUMP);
+        }
+
         ReceiptRenewed { receipt_id }.publish(&env);
 
         Ok(())
+    }
+
+    /// Reads SEP-41 `symbol()` from the token contract, keeping `fallback` when
+    /// the token does not implement the metadata interface (or returns an empty
+    /// string). This keeps the call from trapping on non-SEP-41 assets.
+    fn resolve_symbol(env: &Env, token: &Address, fallback: String) -> String {
+        let result = env.try_invoke_contract::<String, soroban_sdk::Error>(
+            token,
+            &symbol_short!("symbol"),
+            Vec::new(env),
+        );
+
+        match result {
+            Ok(Ok(symbol)) if !symbol.is_empty() => symbol,
+            _ => fallback,
+        }
     }
 
     fn index_receipt(env: &Env, user: Address, receipt_id: String) {

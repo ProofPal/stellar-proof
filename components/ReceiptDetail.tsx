@@ -46,6 +46,13 @@ export function ReceiptDetail({
     "idle" | "preparing" | "signing" | "submitting" | "done" | "error"
   >("idle");
   const [renewError, setRenewError] = useState<string | null>(null);
+  const [ackState, setAckState] = useState<
+    "idle" | "preparing" | "signing" | "submitting" | "done" | "error"
+  >("idle");
+  const [ackError, setAckError] = useState<string | null>(null);
+  const [acknowledgedAt, setAcknowledgedAt] = useState<number | undefined>(
+    receipt.acknowledgedAt
+  );
   const { address, isConnected, signTransaction } = useStellarWallet();
 
   const handleCopyHash = () => {
@@ -133,8 +140,81 @@ export function ReceiptDetail({
     }
   };
 
+  /**
+   * Records the recipient's acknowledgement. The contract requires the
+   * receiver's signature, so the connected account must be the recipient.
+   */
+  const handleAcknowledge = async () => {
+    setAckError(null);
+
+    if (mockMode) {
+      setAckState("error");
+      setAckError(
+        "Demo Mode receipts are simulated. Turn Demo Mode off and use a live Testnet receipt to acknowledge."
+      );
+      return;
+    }
+
+    if (!isConnected || !address) {
+      setAckState("error");
+      setAckError("Connect the recipient wallet to acknowledge this receipt.");
+      return;
+    }
+    if (address !== receipt.receiver) {
+      setAckState("error");
+      setAckError(
+        "Only the recorded recipient can acknowledge this receipt. Connect the recipient account and try again."
+      );
+      return;
+    }
+
+    try {
+      setAckState("preparing");
+      const prepareResponse = await fetch("/api/stellar/acknowledge-receipt", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ account: address, receiptId: receipt.id }),
+      });
+      const prepared = await prepareResponse.json();
+      if (!prepareResponse.ok) {
+        throw new Error(
+          prepared.error || "Unable to prepare the acknowledgement."
+        );
+      }
+
+      setAckState("signing");
+      const signedXdr = await signTransaction(prepared.xdr);
+
+      setAckState("submitting");
+      const submitResponse = await fetch("/api/stellar/submit-payment", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signedXdr }),
+      });
+      const submitted = await submitResponse.json();
+      if (!submitResponse.ok) {
+        throw new Error(
+          submitted.error || "Unable to submit the acknowledgement."
+        );
+      }
+
+      const record = await fetchReceiptFromApi(receipt.id);
+      if (record) setOnchain(record);
+      setAcknowledgedAt(record?.acknowledgedAt ?? Math.floor(Date.now() / 1000));
+      setAckState("done");
+    } catch (err) {
+      setAckState("error");
+      setAckError(
+        err instanceof Error ? err.message : "The acknowledgement failed."
+      );
+    }
+  };
+
   const tokenAddress = onchain?.token || receipt.token || "";
   const renewBusy = ["preparing", "signing", "submitting"].includes(renewState);
+  const ackBusy = ["preparing", "signing", "submitting"].includes(ackState);
+  const acknowledgementTime = acknowledgedAt ?? onchain?.acknowledgedAt;
+  const isReceiver = Boolean(address && address === receipt.receiver);
 
   // PDF Vector Exporter using jsPDF
   const exportPDF = () => {
@@ -519,8 +599,8 @@ export function ReceiptDetail({
                       {tokenAddress}
                     </span>
                     <span className="text-zinc-400">
-                      Authoritative asset. {receipt.tokenSymbol} is the
-                      payer-reported display symbol.
+                      Authoritative asset. {receipt.tokenSymbol} is the symbol
+                      read from the token contract.
                     </span>
                   </div>
                   <a
@@ -606,6 +686,51 @@ export function ReceiptDetail({
           </span>
         </div>
       )}
+
+      {/* Recipient acknowledgement */}
+      <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] flex flex-col gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h4 className="text-xs font-bold text-zinc-200">
+              Recipient acknowledgement
+            </h4>
+            <p className="text-[10px] text-zinc-500 leading-normal max-w-md">
+              {acknowledgementTime
+                ? `The recipient signed an onchain acknowledgement on ${new Date(
+                    acknowledgementTime * 1000
+                  ).toLocaleString()}. This does not prove delivery, only that the recipient confirmed the record.`
+                : "The payer wrote this receipt. A recipient acknowledgement is a separate onchain step that needs the recipient's signature."}
+            </p>
+          </div>
+          {acknowledgementTime ? (
+            <span className="px-3 py-2 bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 font-bold rounded-xl text-[11px] flex items-center justify-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Acknowledged
+            </span>
+          ) : (
+            <button
+              onClick={handleAcknowledge}
+              disabled={ackBusy || !isReceiver || mockMode}
+              className="px-3 py-2 bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 text-zinc-200 font-bold rounded-xl text-[11px] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition"
+              title={
+                isReceiver
+                  ? "Sign an acknowledgement as the recipient"
+                  : "Only the recorded recipient can acknowledge this receipt"
+              }
+            >
+              {ackBusy ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              {isReceiver ? "Acknowledge" : "Recipient only"}
+            </button>
+          )}
+        </div>
+        {ackError && (
+          <p className="text-[10px] text-red-400 leading-normal">{ackError}</p>
+        )}
+      </div>
 
       {/* Persistent storage renewal */}
       <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] flex flex-col gap-2">

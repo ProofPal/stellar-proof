@@ -103,7 +103,7 @@ export interface OnchainReceipt {
   /** Amount in stroops, string encoded for safe transport. */
   amountStroops: string;
   amount: string;
-  /** Display symbol reported by the payer; `token` is authoritative. */
+  /** Symbol read from the token contract (payer label fallback); `token` is authoritative. */
   tokenSymbol: string;
   ipfsHash: string;
   timestamp: number;
@@ -112,6 +112,8 @@ export interface OnchainReceipt {
   ttlLedgers?: number;
   /** Approximate expiry derived from the persistent TTL. */
   expiresAt?: string;
+  /** Ledger timestamp of the recipient's acknowledgement, when present. */
+  acknowledgedAt?: number;
 }
 
 /**

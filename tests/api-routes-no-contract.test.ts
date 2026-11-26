@@ -64,6 +64,22 @@ test("receipts route reports an unconfigured contract", async () => {
   assert.match((await response.json()).error, /not configured/i);
 });
 
+test("acknowledge-receipt reports an unconfigured contract", async () => {
+  const { POST } = await import(
+    "../app/api/stellar/acknowledge-receipt/route"
+  );
+  const response = await POST(
+    new Request("http://localhost/api/stellar/acknowledge-receipt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ account: RECEIVER, receiptId: "rcpt-test-1" }),
+    })
+  );
+
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /not configured/i);
+});
+
 test("renew-receipt reports an unconfigured contract", async () => {
   const { POST } = await import("../app/api/stellar/renew-receipt/route");
   const response = await POST(

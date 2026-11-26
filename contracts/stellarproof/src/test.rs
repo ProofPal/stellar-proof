@@ -2,10 +2,35 @@
 
 use super::*;
 use soroban_sdk::{
+    contract, contractimpl,
     testutils::{storage::Persistent, Address as _, Events, Ledger},
     token::{Client as TokenClient, StellarAssetClient},
     xdr, Env,
 };
+
+/// Minimal SEP-41 token used to prove the contract reads `symbol()` instead of
+/// trusting the caller-supplied label.
+#[contract]
+pub struct MockToken;
+
+#[contractimpl]
+impl MockToken {
+    pub fn symbol(env: Env) -> String {
+        String::from_str(&env, "MOCK")
+    }
+
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
+}
+
+/// Token without SEP-41 metadata: `symbol()` traps, so the contract must fall
+/// back to the payer-reported label rather than reverting the payment.
+#[contract]
+pub struct PlainToken;
+
+#[contractimpl]
+impl PlainToken {
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {}
+}
 
 struct Ctx {
     env: Env,
@@ -65,7 +90,11 @@ fn creates_and_reads_receipt() {
     assert_eq!(receipt.sender, ctx.sender);
     assert_eq!(receipt.receiver, ctx.receiver);
     assert_eq!(receipt.amount, AMOUNT);
-    assert_eq!(receipt.token_symbol, String::from_str(&ctx.env, "XLM"));
+    // The stored symbol is the token's own SEP-41 symbol, not the caller label.
+    assert_eq!(
+        receipt.token_symbol,
+        TokenClient::new(&ctx.env, &ctx.token).symbol()
+    );
     assert_eq!(receipt.timestamp, ctx.env.ledger().timestamp());
 
     let stored = ctx
@@ -346,4 +375,140 @@ fn unknown_receipt_is_not_found() {
             .verify_receipt(&String::from_str(&ctx.env, "rcpt-missing")),
         None
     );
+}
+
+#[test]
+fn reads_the_symbol_from_the_token_contract() {
+    let ctx = setup();
+    let token = ctx.env.register(MockToken, ());
+
+    // The payer claims "FAKE"; the contract stores what the token reports.
+    let receipt = ctx.client.create_receipt(
+        &ctx.sender,
+        &String::from_str(&ctx.env, "rcpt-symbol"),
+        &ctx.receiver,
+        &token,
+        &AMOUNT,
+        &String::from_str(&ctx.env, "FAKE"),
+        &String::from_str(&ctx.env, "QmSymbolCid"),
+        &String::from_str(&ctx.env, "Symbol resolution"),
+    );
+
+    assert_eq!(receipt.token_symbol, String::from_str(&ctx.env, "MOCK"));
+}
+
+#[test]
+fn falls_back_to_the_reported_symbol_without_sep41_metadata() {
+    let ctx = setup();
+    let token = ctx.env.register(PlainToken, ());
+
+    let receipt = ctx.client.create_receipt(
+        &ctx.sender,
+        &String::from_str(&ctx.env, "rcpt-fallback"),
+        &ctx.receiver,
+        &token,
+        &AMOUNT,
+        &String::from_str(&ctx.env, "REPORTED"),
+        &String::from_str(&ctx.env, "QmFallbackCid"),
+        &String::from_str(&ctx.env, "Fallback symbol"),
+    );
+
+    assert_eq!(receipt.token_symbol, String::from_str(&ctx.env, "REPORTED"));
+}
+
+#[test]
+fn receiver_can_acknowledge_a_receipt() {
+    let ctx = setup();
+    create(&ctx, "rcpt-ack");
+
+    let id = String::from_str(&ctx.env, "rcpt-ack");
+    assert_eq!(ctx.client.get_acknowledgement(&id), None);
+
+    ctx.env.ledger().set_timestamp(1_700_000_000);
+    let timestamp = ctx.client.acknowledge_receipt(&ctx.receiver, &id);
+
+    assert_eq!(timestamp, 1_700_000_000);
+    assert_eq!(ctx.client.get_acknowledgement(&id), Some(timestamp));
+}
+
+#[test]
+fn only_the_recorded_receiver_can_acknowledge() {
+    let ctx = setup();
+    create(&ctx, "rcpt-ack-other");
+
+    let stranger = Address::generate(&ctx.env);
+    let id = String::from_str(&ctx.env, "rcpt-ack-other");
+
+    assert_eq!(
+        ctx.client.try_acknowledge_receipt(&stranger, &id),
+        Err(Ok(Error::NotReceiver))
+    );
+    // The sender is not the receiver either.
+    assert_eq!(
+        ctx.client.try_acknowledge_receipt(&ctx.sender, &id),
+        Err(Ok(Error::NotReceiver))
+    );
+    assert_eq!(ctx.client.get_acknowledgement(&id), None);
+}
+
+#[test]
+fn acknowledgement_cannot_be_recorded_twice() {
+    let ctx = setup();
+    create(&ctx, "rcpt-ack-twice");
+
+    let id = String::from_str(&ctx.env, "rcpt-ack-twice");
+    ctx.client.acknowledge_receipt(&ctx.receiver, &id);
+
+    assert_eq!(
+        ctx.client.try_acknowledge_receipt(&ctx.receiver, &id),
+        Err(Ok(Error::AlreadyAcknowledged))
+    );
+}
+
+#[test]
+fn acknowledging_a_missing_receipt_is_not_found() {
+    let ctx = setup();
+
+    assert_eq!(
+        ctx.client
+            .try_acknowledge_receipt(&ctx.receiver, &String::from_str(&ctx.env, "rcpt-missing")),
+        Err(Ok(Error::ReceiptNotFound))
+    );
+}
+
+#[test]
+fn acknowledgement_requires_the_receiver_signature() {
+    let ctx = setup();
+    create(&ctx, "rcpt-ack-auth");
+    ctx.env.set_auths(&[]);
+
+    let id = String::from_str(&ctx.env, "rcpt-ack-auth");
+    assert!(ctx
+        .client
+        .try_acknowledge_receipt(&ctx.receiver, &id)
+        .is_err());
+    assert_eq!(ctx.client.get_acknowledgement(&id), None);
+}
+
+#[test]
+fn acknowledgement_emits_an_event_and_survives_renewal() {
+    let ctx = setup();
+    create(&ctx, "rcpt-ack-event");
+
+    let id = String::from_str(&ctx.env, "rcpt-ack-event");
+    ctx.client.acknowledge_receipt(&ctx.receiver, &id);
+
+    // The acknowledgement event carries the name plus the receipt id and the
+    // acknowledging receiver as topics.
+    let all_events = ctx.env.events().all().filter_by_contract(&ctx.contract_id);
+    let events = all_events.events();
+    assert_eq!(events.len(), 1);
+    match &events[0].body {
+        xdr::ContractEventBody::V0(body) => assert_eq!(body.topics.len(), 3),
+    }
+
+    // Renewal extends the acknowledgement alongside the receipt.
+    ctx.env.set_auths(&[]);
+    ctx.client.bump_receipt(&id);
+    assert!(ctx.client.get_acknowledgement(&id).is_some());
 }

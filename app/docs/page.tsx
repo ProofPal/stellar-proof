@@ -192,6 +192,7 @@ export default function DocsPage() {
                   "POST /api/stellar/submit-payment sends it to Soroban RPC and polls until SUCCESS.",
                   "The contract transfers the asset through its SAC, writes the receipt, indexes both parties and emits ReceiptAnchored.",
                   "The public verifier reads the receipt from storage with getLedgerEntries.",
+                  "The recipient can separately sign acknowledge_receipt, which stores an acknowledgement beside the receipt.",
                 ].map((step, index) => (
                   <li key={step} className="flex gap-3">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-purple-500/20 bg-purple-600/10 text-[11px] font-bold text-purple-300">
@@ -268,8 +269,8 @@ export default function DocsPage() {
                     What it does not prove
                   </p>
                   <ul className="flex list-disc flex-col gap-1 pl-4 text-xs">
-                    <li>That the recipient agreed; only the payer signs.</li>
-                    <li>That the symbol is a verified name for the asset; it is payer-reported, while <code className="text-zinc-300">token</code> is authoritative.</li>
+                    <li>That the recipient agreed or delivered anything. An acknowledgement is a separate opt-in step and is not proof of delivery.</li>
+                    <li>That the token contract&apos;s symbol is a verified asset name; the contract reads SEP-41 <code className="text-zinc-300">symbol()</code>, but <code className="text-zinc-300">token</code> remains authoritative.</li>
                     <li>That the IPFS payload matches the payment.</li>
                     <li>That the record lasts forever; the TTL is ~90 days unless someone renews it.</li>
                   </ul>
@@ -299,12 +300,14 @@ export default function DocsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {[
-                      ["create_receipt", "sender", "Transfer the asset, write the receipt (including the token address) and index both parties."],
+                      ["create_receipt", "sender", "Transfer the asset, write the receipt (token address and SEP-41 symbol) and index both parties."],
                       ["get_receipt", "none", "Return a receipt or ReceiptNotFound."],
                       ["verify_receipt", "none", "Return Some(receipt) or None."],
                       ["get_receipts_by_user", "none", "Return the ids where an address was sender or receiver."],
                       ["get_receipts_by_user_page", "none", "Return one bounded page (max 50) of a user's receipt ids."],
-                      ["bump_receipt", "none", "Permissionlessly extend a receipt and its indexes to ~90 days and emit ReceiptRenewed."],
+                      ["acknowledge_receipt", "receiver", "Record the recipient's acknowledgement in a separate entry and emit ReceiptAcknowledged."],
+                      ["get_acknowledgement", "none", "Return the acknowledgement timestamp, or None."],
+                      ["bump_receipt", "none", "Permissionlessly extend a receipt, its indexes and any acknowledgement to ~90 days and emit ReceiptRenewed."],
                     ].map(([fn, auth, purpose]) => (
                       <tr key={fn}>
                         <td className="px-4 py-3 font-mono text-[11px] text-purple-300">{fn}</td>
@@ -317,14 +320,17 @@ export default function DocsPage() {
               </div>
               <p>
                 Storage:{" "}
-                <code className="text-zinc-300">[&quot;Receipt&quot;, id]</code> and{" "}
+                <code className="text-zinc-300">[&quot;Receipt&quot;, id]</code>,{" "}
                 <code className="text-zinc-300">[&quot;UserReceipts&quot;, address]</code>{" "}
-                are persistent. Both are extended to about 90 days at write time.
+                and <code className="text-zinc-300">[&quot;Acknowledgement&quot;, id]</code>{" "}
+                are persistent. All are extended to about 90 days at write time.
                 Errors: <code className="text-zinc-300">EmptyReceiptId</code> (1),{" "}
                 <code className="text-zinc-300">EmptyIpfsHash</code> (2),{" "}
                 <code className="text-zinc-300">InvalidAmount</code> (3),{" "}
                 <code className="text-zinc-300">ReceiptAlreadyExists</code> (4),{" "}
-                <code className="text-zinc-300">ReceiptNotFound</code> (5).
+                <code className="text-zinc-300">ReceiptNotFound</code> (5),{" "}
+                <code className="text-zinc-300">NotReceiver</code> (6),{" "}
+                <code className="text-zinc-300">AlreadyAcknowledged</code> (7).
               </p>
               <Code>{`create_receipt(sender, receipt_id, receiver, token, amount,
                token_symbol, ipfs_hash, purpose) -> Result<Receipt, Error>
@@ -333,13 +339,17 @@ Receipt { receipt_id, sender, receiver, token, amount,
           token_symbol, ipfs_hash, timestamp, purpose }
 
 get_receipts_by_user_page(user, start, limit) -> Vec<String>
+acknowledge_receipt(receiver, receipt_id) -> Result<u64, Error>
+get_acknowledgement(receipt_id) -> Option<u64>
 bump_receipt(receipt_id) -> Result<(), Error>`}</Code>
               <p>
-                v0.2 stores the token contract address alongside the receipt and
-                adds permissionless TTL renewal and paged history. The symbol stays
-                as a payer-reported display label. v0.2 is a new contract ID: v0.1
-                receipts remain readable in their old deployment but are not
-                migrated automatically.
+                v0.3 reads the token symbol from the asset contract with SEP-41{" "}
+                <code className="text-zinc-300">symbol()</code> and falls back to
+                the payer label only when the token has no metadata interface. It
+                also adds recipient acknowledgement, a separate persistent entry
+                that only the recorded receiver can write. v0.3 is a new contract
+                ID: earlier receipts remain readable in their old deployment but
+                are not migrated automatically.
               </p>
             </Section>
 
@@ -359,6 +369,7 @@ bump_receipt(receipt_id) -> Result<(), Error>`}</Code>
                       ["/api/stellar/submit-payment", "POST", "Transaction hash after SUCCESS"],
                       ["/api/stellar/receipt", "GET", "Receipt from contract storage, or null"],
                       ["/api/stellar/receipts", "GET", "One page of an account's history from the onchain index"],
+                      ["/api/stellar/acknowledge-receipt", "POST", "Unsigned acknowledge_receipt XDR for the recipient"],
                       ["/api/stellar/renew-receipt", "POST", "Unsigned bump_receipt XDR"],
                       ["/api/stellar/account", "GET", "Balances, reserve and fee estimate"],
                       ["/api/ipfs", "POST", "Pinned CID; 503 when PINATA_JWT is missing"],
@@ -416,8 +427,8 @@ STELLAR_DEPLOYER_SECRET=$(stellar keys secret stellarproof-deployer) pnpm deploy
 
             <Section id="limits" title="Limits">
               <ul className="flex list-disc flex-col gap-2 pl-5">
-                <li>The receipt is payer-attested. The recipient does not sign.</li>
-                <li>The symbol is payer-reported; verify the stored token address instead.</li>
+                <li>The receipt is payer-attested unless the recipient signs a separate acknowledgement. An acknowledgement is not proof of delivery.</li>
+                <li>The token address is authoritative; the symbol is read from the token contract, or the payer label when it has no SEP-41 metadata.</li>
                 <li>Persistent entries expire after about 90 days unless someone calls bump_receipt.</li>
                 <li>History pages are bounded to 50 ids and require one storage read per receipt.</li>
                 <li>The PDF is a payment record, not a tax document.</li>
