@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ReceiptData } from "@/lib/db";
 import {
   ArrowLeft,
@@ -46,6 +46,7 @@ export function ReceiptDetail({
     "idle" | "preparing" | "signing" | "submitting" | "done" | "error"
   >("idle");
   const [renewError, setRenewError] = useState<string | null>(null);
+  const [previousExpiresAt, setPreviousExpiresAt] = useState<string | null>(null);
   const [ackState, setAckState] = useState<
     "idle" | "preparing" | "signing" | "submitting" | "done" | "error"
   >("idle");
@@ -53,7 +54,10 @@ export function ReceiptDetail({
   const [acknowledgedAt, setAcknowledgedAt] = useState<number | undefined>(
     receipt.acknowledgedAt
   );
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const { address, isConnected, signTransaction } = useStellarWallet();  
+  useEffect(() => { 
+    setRenewState("idle"); setRenewError(null); setPreviousExpiresAt(null); 
+  }, [receipt.id]);
 
   const handleCopyHash = () => {
     navigator.clipboard.writeText(receipt.txHash);
@@ -97,7 +101,8 @@ export function ReceiptDetail({
    * the connected account only signs and pays for its own transaction.
    */
   const handleRenew = async () => {
-    setRenewError(null);
+    setRenewError(null); 
+    setPreviousExpiresAt(onchain?.expiresAt ?? null);
 
     if (!isConnected || !address) {
       setRenewState("error");
@@ -131,6 +136,8 @@ export function ReceiptDetail({
         throw new Error(submitted.error || "Unable to submit the renewal.");
       }
 
+      const record = await fetchReceiptFromApi(receipt.id); 
+      if (record) setOnchain(record); 
       setRenewState("done");
     } catch (err) {
       setRenewState("error");
@@ -767,7 +774,9 @@ export function ReceiptDetail({
         )}
         {renewState === "done" && (
           <p className="text-[10px] text-emerald-400 leading-normal">
-            Persistent TTL extended by about 90 days from the latest ledger.
+            {previousExpiresAt && onchain?.expiresAt && previousExpiresAt !== onchain.expiresAt 
+            ? `Persistent storage extended from ${new Date(previousExpiresAt).toLocaleDateString()} to ${new Date(onchain.expiresAt).toLocaleDateString()}.` 
+            : "Persistent TTL extended by about 90 days from the latest ledger."}
           </p>
         )}
       </div>
